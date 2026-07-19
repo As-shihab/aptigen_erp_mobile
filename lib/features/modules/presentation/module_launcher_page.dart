@@ -1,27 +1,28 @@
 import 'package:flutter/material.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../auth/data/auth_service.dart';
+import '../../chat/presentation/chat_hub_page.dart';
 import '../../hr/presentation/employee_dashboard_page.dart';
 import '../../hr/presentation/hr_analytics_page.dart';
+import '../../market/presentation/market_page.dart';
+import '../../note/presentation/note_page.dart';
 import '../data/module_service.dart';
 import '../models/module_model.dart';
 
-class ModuleLauncherPage extends StatefulWidget {
-  const ModuleLauncherPage({super.key});
+/// The "Home" tab of the bottom-nav shell — the module launchpad grid.
+class HomeTab extends StatefulWidget {
+  const HomeTab({super.key});
 
   @override
-  State<ModuleLauncherPage> createState() => _ModuleLauncherPageState();
+  State<HomeTab> createState() => _HomeTabState();
 }
 
-class _ModuleLauncherPageState extends State<ModuleLauncherPage> {
+class _HomeTabState extends State<HomeTab> {
   final _moduleService = ModuleService(ApiClient());
-  final _authService = AuthService(ApiClient());
 
   bool _loading = true;
   String? _error;
   List<LaunchpadModule> _modules = [];
-  String _companyName = 'Aptigen ERP';
 
   @override
   void initState() {
@@ -35,7 +36,6 @@ class _ModuleLauncherPageState extends State<ModuleLauncherPage> {
       _error = null;
     });
     try {
-      final user = await _authService.getStoredUser();
       final results = await Future.wait([
         _moduleService.loadInstalledModules(),
         _moduleService.resolveAllowedModuleIds(),
@@ -45,7 +45,6 @@ class _ModuleLauncherPageState extends State<ModuleLauncherPage> {
       if (!mounted) return;
       setState(() {
         _modules = buildLaunchpadModules(installedRows, allowedModuleIds);
-        _companyName = user?.companyName ?? 'Aptigen ERP';
       });
     } catch (_) {
       if (!mounted) return;
@@ -56,6 +55,20 @@ class _ModuleLauncherPageState extends State<ModuleLauncherPage> {
   }
 
   void _openModule(LaunchpadModule module) {
+    if (module.id == 'chat') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChatHubPage()));
+      return;
+    }
+    if (module.id == 'note') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotePage()));
+      return;
+    }
+    if (module.id == 'market') {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => Scaffold(appBar: AppBar(title: const Text('Market')), body: const MarketPage()),
+      ));
+      return;
+    }
     if (!module.isHr) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${module.label} — coming soon')),
@@ -94,25 +107,11 @@ class _ModuleLauncherPageState extends State<ModuleLauncherPage> {
     );
   }
 
-  Future<void> _logout() async {
-    await _authService.logout();
-    if (!mounted) return;
-    Navigator.of(context).pushNamedAndRemoveUntil('/welcome', (route) => false);
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_companyName),
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), tooltip: 'Sign out', onPressed: _logout),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _buildBody(),
-      ),
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: _buildBody(),
     );
   }
 

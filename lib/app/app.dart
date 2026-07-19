@@ -4,7 +4,7 @@ import '../core/theme/app_theme.dart';
 import '../core/theme/theme_controller.dart';
 import '../features/auth/presentation/splash_page.dart';
 import '../features/auth/presentation/welcome_page.dart';
-import '../features/modules/presentation/module_launcher_page.dart';
+import '../features/shell/presentation/home_shell_page.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 
@@ -28,7 +28,7 @@ class AptigenApp extends StatelessWidget {
             final builder = switch (settings.name) {
               '/splash' => (BuildContext _) => const SplashPage(),
               '/welcome' => (BuildContext _) => const WelcomePage(),
-              '/launcher' => (BuildContext _) => const ModuleLauncherPage(),
+              '/launcher' => (BuildContext _) => const HomeShellPage(),
               _ => (BuildContext _) => const SplashPage(),
             };
             return _FadeSlideRoute(builder: builder, settings: settings);

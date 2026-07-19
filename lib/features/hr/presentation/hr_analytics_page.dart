@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/aptigen_app_bar.dart';
 import '../data/hr_analytics_service.dart';
 
 /// Ported from erp/desktop's HrmDashboard.tsx — charts stacked vertically
@@ -82,7 +83,7 @@ class _HrAnalyticsPageState extends State<HrAnalyticsPage> {
     final group = _map('group');
 
     return Scaffold(
-      appBar: AppBar(title: const Text('HR Analytics')),
+      appBar: const AptigenAppBar(title: 'HR Analytics', showBack: true),
       body: RefreshIndicator(
         onRefresh: _loadAnalytics,
         child: _loading

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/aptigen_app_bar.dart';
 import '../data/employee_dashboard_service.dart';
 import 'tabs/asset_tab.dart';
 import 'tabs/attendance_tab.dart';
@@ -55,14 +56,14 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> {
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Employee Dashboard')),
+        appBar: const AptigenAppBar(title: 'Employee Dashboard', showBack: true),
         body: const Center(child: CircularProgressIndicator(color: AppColors.brand)),
       );
     }
 
     if (_error != null || _dashboard == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Employee Dashboard')),
+        appBar: const AptigenAppBar(title: 'Employee Dashboard', showBack: true),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -91,8 +92,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> {
     return DefaultTabController(
       length: 8,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Employee Dashboard'),
+        appBar: AptigenAppBar(
+          title: 'Employee Dashboard',
+          showBack: true,
           bottom: const TabBar(
             isScrollable: true,
             tabs: [

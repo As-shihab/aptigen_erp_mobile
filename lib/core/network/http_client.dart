@@ -29,7 +29,9 @@ class BatchRequest {
 
 /// Centralized HTTP client — mirrors erp/desktop's HttpClient:
 /// `/aptigen/` (OData, isV8=true) vs `/api/` (isV8=false), same header/token
-/// convention, and the same `{value: [...], "@odata.count": N}` response shape.
+/// convention, and the same `{value: [...], "@count": N}` response shape
+/// (the backend's odata.service.ts returns `@count`, not `@odata.count`
+/// despite that being the more common OData convention name).
 class ApiClient {
   static const Duration _timeout = Duration(seconds: 15);
 
@@ -98,6 +100,32 @@ class ApiClient {
         .delete(_uri(fullEndpoint, isV8), headers: await _headers())
         .timeout(_timeout);
     return _parse(res, endpoint: fullEndpoint);
+  }
+
+  /// Multipart upload — mirrors erp/desktop's media-library.store.ts
+  /// `addMediaFiles` (POST /api/media/upload, field name `media`).
+  /// `useSharp` mirrors desktop's `{ useSharp: true }` upload option —
+  /// sent as the `x-media-use-sharp` header the backend's media service reads.
+  Future<dynamic> uploadFile(
+    String endpoint, {
+    required List<int> bytes,
+    required String filename,
+    Map<String, String> fields = const {},
+    String fileFieldName = 'media',
+    bool isV8 = false,
+    bool useSharp = true,
+  }) async {
+    final uri = _uri(endpoint, isV8);
+    final token = await AppStorage.getToken();
+    final request = http.MultipartRequest('POST', uri)
+      ..fields.addAll(fields)
+      ..files.add(http.MultipartFile.fromBytes(fileFieldName, bytes, filename: filename));
+    if (token != null && token.isNotEmpty) request.headers['authorization'] = token;
+    request.headers['x-media-use-sharp'] = useSharp.toString();
+
+    final streamed = await request.send().timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+    return _parse(res, endpoint: endpoint);
   }
 
   /// One round-trip for multiple independent OData GETs — mirrors the

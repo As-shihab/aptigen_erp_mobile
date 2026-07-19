@@ -12,6 +12,15 @@ class EmployeeDashboardService {
     return (data as Map?)?.cast<String, dynamic>();
   }
 
+  /// POST /api/hrm/punch — single toggle endpoint, mirrors the fingerprint
+  /// device's one-row-per-day open/close semantics: no open row today ->
+  /// check-in (creates), open row -> check-out (closes it).
+  /// Returns {action: 'check-in'|'check-out', checkInTime, checkOutTime}.
+  Future<Map<String, dynamic>> punchAttendance() async {
+    final data = await _client.post('hrm/punch', {}, isV8: false);
+    return (data as Map?)?.cast<String, dynamic>() ?? {};
+  }
+
   Future<List<dynamic>> getAttendance(int employeeId) async {
     final data = await _client.get(
       'attendance_logs?\$filter=employee_id eq $employeeId&\$select=id,attendance_date,check_in_time,check_out_time,has_late,has_overtime,overtime_minutes,status&\$orderby=attendance_date desc&\$top=100',

@@ -1,13 +1,89 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/network/http_client.dart';
+import '../../../../core/network/socket_client.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../data/employee_dashboard_service.dart';
 
-class ProfileTab extends StatelessWidget {
+class ProfileTab extends StatefulWidget {
   final Map<String, dynamic> employee;
   final Map<String, dynamic> kpi;
   final List<dynamic> leaveBalances;
 
   const ProfileTab({super.key, required this.employee, required this.kpi, required this.leaveBalances});
+
+  @override
+  State<ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends State<ProfileTab> {
+  final _service = EmployeeDashboardService(ApiClient());
+  late Map<String, dynamic> _kpi;
+  bool _punching = false;
+  void Function(dynamic)? _attendanceListener;
+
+  int get _employeeId => int.tryParse((widget.employee['id'] ?? '').toString()) ?? 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _kpi = Map<String, dynamic>.from(widget.kpi);
+    _connectRealtime();
+  }
+
+  Future<void> _connectRealtime() async {
+    final context = await resolveSocketContext(ApiClient());
+    if (context == null || !mounted) return;
+    final socket = AppSocket.connect(context);
+
+    void listener(dynamic payload) {
+      if (payload is! Map) return;
+      final eventEmployeeId = int.tryParse((payload['employee_id'] ?? '').toString());
+      if (eventEmployeeId != _employeeId) return;
+      if (!mounted) return;
+      setState(() {
+        _kpi['checkIn'] = payload['check_in_time'];
+        _kpi['checkOut'] = payload['check_out_time'];
+      });
+    }
+
+    _attendanceListener = listener;
+    socket.on('attendance:recorded', listener);
+  }
+
+  @override
+  void dispose() {
+    final listener = _attendanceListener;
+    if (listener != null) {
+      AppSocket.instance?.off('attendance:recorded', listener);
+    }
+    super.dispose();
+  }
+
+  Future<void> _punch() async {
+    setState(() => _punching = true);
+    try {
+      final result = await _service.punchAttendance();
+      if (!mounted) return;
+      setState(() {
+        _kpi['checkIn'] = result['checkInTime'];
+        _kpi['checkOut'] = result['checkOutTime'];
+      });
+      final action = (result['action'] ?? '').toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(action == 'check-in' ? 'Checked in' : 'Checked out')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      debugPrint('punchAttendance failed: $error');
+      final message = error is ApiException
+          ? 'Could not record attendance (${error.statusCode}): ${error.message}'
+          : 'Could not record attendance: $error';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _punching = false);
+    }
+  }
 
   String _fmtTime(dynamic value) {
     if (value == null) return '—';
@@ -25,6 +101,7 @@ class ProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final employee = widget.employee;
     final firstName = (employee['first_name'] ?? '').toString();
     final lastName = (employee['last_name'] ?? '').toString();
     final name = [firstName, lastName].where((s) => s.trim().isNotEmpty).join(' ');
@@ -36,8 +113,13 @@ class ProfileTab extends StatelessWidget {
     final department = (employee['department'] as Map?)?['name']?.toString();
     final designation = (employee['designation'] as Map?)?['name']?.toString();
     final shift = (employee['shift'] as Map?)?['name']?.toString();
-    final salary = num.tryParse((kpi['salary'] ?? 0).toString()) ?? 0;
-    final presentDays = kpi['presentDaysThisMonth'] ?? 0;
+    final salary = num.tryParse((_kpi['salary'] ?? 0).toString()) ?? 0;
+    final presentDays = _kpi['presentDaysThisMonth'] ?? 0;
+
+    final hasCheckedIn = _kpi['checkIn'] != null;
+    final hasCheckedOut = _kpi['checkOut'] != null;
+    final canCheckIn = !hasCheckedIn;
+    final canCheckOut = hasCheckedIn && !hasCheckedOut;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -70,6 +152,32 @@ class ProfileTab extends StatelessWidget {
                   if (department != null) _Chip(text: department, color: AppColors.slate600),
                 ],
               ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+                      onPressed: (canCheckIn && !_punching) ? _punch : null,
+                      icon: const Icon(Icons.login, size: 18),
+                      label: Text(_punching && canCheckIn ? 'Checking in...' : 'Check In'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+                      onPressed: (canCheckOut && !_punching) ? _punch : null,
+                      icon: const Icon(Icons.logout, size: 18),
+                      label: Text(_punching && canCheckOut ? 'Checking out...' : 'Check Out'),
+                    ),
+                  ),
+                ],
+              ),
+              if (hasCheckedIn && hasCheckedOut) ...[
+                const SizedBox(height: 8),
+                Text('Attendance completed for today.', style: TextStyle(fontSize: 11, color: AppColors.slate600)),
+              ],
             ],
           ),
         ),
@@ -82,8 +190,8 @@ class ProfileTab extends StatelessWidget {
           crossAxisSpacing: 10,
           childAspectRatio: 2.2,
           children: [
-            _KpiCard(label: 'Check-In', value: _fmtTime(kpi['checkIn']), color: AppColors.success),
-            _KpiCard(label: 'Check-Out', value: _fmtTime(kpi['checkOut']), color: AppColors.brand),
+            _KpiCard(label: 'Check-In', value: _fmtTime(_kpi['checkIn']), color: AppColors.success),
+            _KpiCard(label: 'Check-Out', value: _fmtTime(_kpi['checkOut']), color: AppColors.brand),
             _KpiCard(label: 'Salary', value: salary.toStringAsFixed(0), color: AppColors.warning),
             _KpiCard(label: 'Present', value: '$presentDays days', color: AppColors.info),
           ],
@@ -100,11 +208,11 @@ class ProfileTab extends StatelessWidget {
             _DetailRow(label: 'Emergency Contact', value: (employee['emergency_contact_name'] ?? '—').toString()),
           ],
         ),
-        if (leaveBalances.isNotEmpty) ...[
+        if (widget.leaveBalances.isNotEmpty) ...[
           const SizedBox(height: 16),
           _SectionCard(
             title: 'Leave Balances',
-            children: leaveBalances.map((raw) {
+            children: widget.leaveBalances.map((raw) {
               final b = (raw as Map);
               return _DetailRow(label: (b['name'] ?? '—').toString(), value: '${b['used']}/${b['total']}');
             }).toList(),
