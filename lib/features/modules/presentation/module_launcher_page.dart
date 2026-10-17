@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../accounting/presentation/accounting_home_page.dart';
 import '../../chat/presentation/chat_hub_page.dart';
 import '../../hr/presentation/employee_dashboard_page.dart';
 import '../../hr/presentation/hr_analytics_page.dart';
+import '../../jobs/presentation/jobs_list_page.dart';
 import '../../market/presentation/market_page.dart';
 import '../../note/presentation/note_page.dart';
+import '../../profile/presentation/profile_page.dart';
+import '../../sell/presentation/pos/pos_terminal_page.dart';
+import '../../sell/presentation/sales_hub_page.dart';
+import '../../stays/presentation/stays_list_page.dart';
+import '../../store/presentation/store_home_page.dart';
 import '../data/module_service.dart';
 import '../models/module_model.dart';
 
@@ -67,6 +74,57 @@ class _HomeTabState extends State<HomeTab> {
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => Scaffold(appBar: AppBar(title: const Text('Market')), body: const MarketPage()),
       ));
+      return;
+    }
+    if (module.id == 'aptigen') {
+      // Only the Stays vertical is ported to mobile so far — erp/desktop's
+      // aptigen module also covers a Market/services vertical, not
+      // implemented here yet. (There's no live "Foods" vertical on
+      // `frontend` either — its /foods page is a disconnected static mockup
+      // with no backend, so it's deliberately not mirrored here.)
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StaysListPage()));
+      return;
+    }
+    if (module.id == 'jobs') {
+      // Read-only browse of this workplace's public job postings — mirrors
+      // frontend's customer-facing /jobs page (same public API), no apply
+      // flow (that stays a customer-only, unauthenticated-web action).
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const JobsListPage()));
+      return;
+    }
+    if (module.id == 'store') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StoreHomePage()));
+      return;
+    }
+    if (module.id == 'sell') {
+      // Sales home: today's numbers, quick actions (POS is one tap away via
+      // its "New sale" button) and every Sales area.
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SalesHubPage()));
+      return;
+    }
+    if (module.id == 'pharma') {
+      // POS-first pass: the Pharma tile opens the same POS terminal in
+      // pharma mode (pharma-flagged products/checkout/held bills), with a
+      // trimmed menu down to Inventory + Sales — see PosTerminalPage's
+      // `isPharma` flag. Full desktop parity (purchases/suppliers/
+      // customers/expenses/reports/catalog as separate screens) is out of
+      // scope for this pass.
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PosTerminalPage(isPharma: true)));
+      return;
+    }
+    if (module.id == 'accounting') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountingHomePage()));
+      return;
+    }
+    if (module.id == 'profile') {
+      // Same account/billing/invoices screen as the bottom-nav Profile tab —
+      // this tile was previously falling through to the generic "coming
+      // soon" snackbar below since it had no explicit case here. ProfilePage
+      // already renders its own full-bleed gradient hero header (with a
+      // built-in back button when pushed as its own route — see
+      // _ProfileHeader below), so it's pushed bare, not wrapped in a second
+      // AppBar like the market case above.
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfilePage()));
       return;
     }
     if (!module.isHr) {

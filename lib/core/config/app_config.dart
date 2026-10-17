@@ -13,7 +13,7 @@ class AppConfig {
   static const String apiBase = kReleaseMode ? _prodApiBase : _localApiBase;
 
   /// OData-style base — GET/PUT/DELETE against Prisma model names directly.
-  static const String v8Base = '$apiBase/aptigen/';
+  static const String v8Base = '$apiBase/v1/';
 
   /// Plain REST base — auth/*, hrm/*, and other custom routes.
   static const String apiPrefix = '$apiBase/api/';

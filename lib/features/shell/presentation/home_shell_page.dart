@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/network/socket_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/currency.dart';
 import '../../../shared/widgets/aptigen_shell_header.dart';
 import '../../auth/data/auth_service.dart';
 import '../../market/presentation/market_page.dart';
 import '../../modules/presentation/module_launcher_page.dart';
+import '../../notifications/data/notifications_service.dart';
+import '../../notifications/presentation/notifications_page.dart';
 import '../../profile/presentation/profile_page.dart';
 import '../../settings/presentation/settings_page.dart';
 
@@ -19,9 +22,10 @@ class HomeShellPage extends StatefulWidget {
 }
 
 class _HomeShellPageState extends State<HomeShellPage> {
-  final _authService = AuthService(ApiClient());
   int _currentIndex = 0;
   String _workplaceName = 'Aptigen ERP';
+  int _unreadNotifications = 0;
+  final _notificationsService = NotificationsService(ApiClient());
 
   static const _tabs = [
     HomeTab(),
@@ -35,10 +39,21 @@ class _HomeShellPageState extends State<HomeShellPage> {
     super.initState();
     _loadWorkplaceName();
     _connectRealtime();
+    _loadUnreadCount();
+    // Belt-and-suspenders alongside _SessionGate's own refresh (app.dart) —
+    // cheap to re-check here too, so this shell never renders currency-
+    // dependent screens (Store/Sell) against a stale in-memory value.
+    WorkplaceCurrency.refresh(ApiClient());
+  }
+
+  @override
+  void dispose() {
+    AppSocket.instance?.off('notification:created', _onNotificationCreated);
+    super.dispose();
   }
 
   Future<void> _loadWorkplaceName() async {
-    final user = await _authService.getStoredUser();
+    final user = await AuthService(ApiClient()).getStoredUser();
     if (!mounted) return;
     setState(() => _workplaceName = user?.companyName ?? 'Aptigen ERP');
   }
@@ -47,26 +62,28 @@ class _HomeShellPageState extends State<HomeShellPage> {
     final context = await resolveSocketContext(ApiClient());
     if (context == null) return;
     AppSocket.connect(context);
+    AppSocket.instance?.on('notification:created', _onNotificationCreated);
   }
 
-  void _openNotifications() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.notifications_none, size: 36, color: AppColors.slate400),
-              const SizedBox(height: 12),
-              const Text('No notifications yet.', style: TextStyle(fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-      ),
-    );
+  void _onNotificationCreated(dynamic _) {
+    if (!mounted) return;
+    setState(() => _unreadNotifications += 1);
+  }
+
+  Future<void> _loadUnreadCount() async {
+    try {
+      final result = await _notificationsService.list(unreadOnly: true, top: 1);
+      if (!mounted) return;
+      setState(() => _unreadNotifications = result.unreadCount);
+    } catch (_) {
+      // Header just shows no badge — the notifications page itself will
+      // surface a real error if the user opens it.
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsPage()));
+    _loadUnreadCount();
   }
 
   @override
@@ -75,7 +92,8 @@ class _HomeShellPageState extends State<HomeShellPage> {
     return Scaffold(
       appBar: AptigenShellHeader(
         workplaceName: _workplaceName,
-        onNotificationsTap: _openNotifications,
+        onNotificationsTap: () => _openNotifications(),
+        unreadNotifications: _unreadNotifications,
       ),
       body: IndexedStack(index: _currentIndex, children: _tabs),
       bottomNavigationBar: Container(

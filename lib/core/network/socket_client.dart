@@ -57,7 +57,16 @@ class AppSocket {
           .enableAutoConnect()
           .build(),
     );
-    socket.onConnect((_) => isConnected.value = true);
+    // The default namespace carries no handshake auth for this join (unlike
+    // ChatGateway's workplaceId/memberId, which IS in the handshake above and
+    // auto-joins the workplace room) — the notification bell's `user:{id}`
+    // room needs this explicit join every time the socket (re)connects, same
+    // as erp/desktop's AppBootstrapContext.tsx. See socket.gateway.ts's
+    // `notifications:join` handler.
+    socket.onConnect((_) {
+      isConnected.value = true;
+      socket.emit('notifications:join', {'userId': context.userId});
+    });
     socket.onDisconnect((_) => isConnected.value = false);
     socket.onConnectError((_) => isConnected.value = false);
     socket.onError((_) => isConnected.value = false);

@@ -11,7 +11,11 @@ class MarketService {
   String _escapeOData(String value) => value.replaceAll("'", "''");
 
   Future<List<MarketApp>> loadCatalog({String search = '', String category = 'all'}) async {
-    final filters = ['is_active eq true'];
+    // is_mobile gates modules that don't have a mobile screen built for them
+    // yet (same flag the home launcher already filters on — see
+    // module_model.dart's buildLaunchpadModules) — the marketplace shouldn't
+    // let someone "install" a desktop-only module from the phone.
+    final filters = ['is_active eq true', 'is_mobile eq true'];
     if (category != 'all') {
       filters.add("contains(tolower(category),'${_escapeOData(category.toLowerCase())}')");
     }
@@ -24,7 +28,7 @@ class MarketService {
   }
 
   Future<List<String>> loadCategories() async {
-    final res = await _client.get(r"modules?$filter=is_active eq true&$top=200");
+    final res = await _client.get(r"modules?$filter=is_active eq true and is_mobile eq true&$top=200");
     final rows = unwrapList(res).cast<Map<String, dynamic>>();
     final categories = rows.map((r) => (r['category'] ?? '').toString().trim()).where((c) => c.isNotEmpty).toSet().toList();
     categories.sort();

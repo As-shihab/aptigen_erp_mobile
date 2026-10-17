@@ -17,6 +17,7 @@ const Map<String, IconData> _moduleIcons = {
   'profile': Icons.person,
   'market': Icons.storefront,
   'aptigen': Icons.hotel,
+  'jobs': Icons.work,
   'inventory': Icons.inventory_2,
   'accounting': Icons.account_balance,
   'crm': Icons.people_alt,
@@ -28,6 +29,7 @@ const Map<String, IconData> _moduleIcons = {
   'institutions': Icons.school,
   'store': Icons.warehouse,
   'excel': Icons.grid_on,
+  'pharma': Icons.medication,
 };
 
 /// Ported from erp/desktop's launchpadModules.ts (buildLaunchpadModules).
@@ -71,7 +73,12 @@ List<LaunchpadModule> buildLaunchpadModules(List<dynamic> installedRows, Set<int
     final status = (map['status'] ?? 'installed').toString().trim().toLowerCase();
     final permitted = allowedModuleIds.isEmpty || allowedModuleIds.contains(moduleId);
     final enabled = map['is_enabled'] != false && status != 'uninstalled';
-    if (moduleId == 0 || !permitted || !enabled) continue;
+    // Gates the mobile launcher specifically — a module can be installed
+    // and permitted for this workplace yet still not have a mobile screen
+    // built for it (cloud/src/seed/permission.seed.ts opts modules in one
+    // at a time as their mobile screens ship).
+    final isMobile = moduleRow['is_mobile'] == true;
+    if (moduleId == 0 || !permitted || !enabled || !isMobile) continue;
 
     final code = (moduleRow['code'] ?? moduleRow['slug'] ?? moduleRow['id'] ?? '').toString().trim().toLowerCase();
     final routeRaw = (moduleRow['route'] ?? '').toString().trim();

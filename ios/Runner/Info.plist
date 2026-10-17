@@ -28,6 +28,10 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Aptigen ERP needs photo library access to attach images to chat messages.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Aptigen ERP includes your location when a new device requests access to a workplace, so admins can verify the request.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Aptigen ERP uses the camera to scan barcodes for Store MRR receiving.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

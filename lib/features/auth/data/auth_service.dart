@@ -1,5 +1,7 @@
+import '../../../core/device/device_identity.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/storage/app_storage.dart';
+import '../../../core/utils/currency.dart';
 import '../models/user_model.dart';
 import '../models/workplace_model.dart';
 
@@ -45,6 +47,7 @@ class AuthService {
             id: (map['id'] ?? map['workplaceid'] ?? '').toString(),
             name: (map['name'] ?? '').toString().trim(),
             isOwn: currentUserId > 0 && ownerId == currentUserId,
+            currency: (map['currency'] ?? '').toString().trim().isEmpty ? 'USD' : map['currency'].toString().trim(),
           );
         })
         .where((option) => option.id.isNotEmpty && option.name.isNotEmpty)
@@ -67,6 +70,7 @@ class AuthService {
       id: createdId.toString(),
       name: (map['name'] ?? name).toString().trim().isNotEmpty ? map['name'].toString() : name,
       isOwn: true,
+      currency: (map['currency'] ?? '').toString().trim().isEmpty ? 'USD' : map['currency'].toString().trim(),
     );
   }
 
@@ -77,9 +81,20 @@ class AuthService {
     final workplaceId = int.tryParse(workplace.id) ?? 0;
     if (workplaceId == 0) throw ApiException(0, 'Invalid workplace selected.');
 
+    final deviceId = await DeviceIdentity.id();
+    final deviceName = await DeviceIdentity.name();
+    final location = await DeviceIdentity.location();
+
     final data = await _client.post(
       'auth/workplce_token',
-      {'workplaceId': workplaceId},
+      {
+        'workplaceId': workplaceId,
+        'deviceId': deviceId,
+        'deviceName': deviceName,
+        'platform': DeviceIdentity.platform,
+        if (location.latitude != null) 'latitude': location.latitude,
+        if (location.longitude != null) 'longitude': location.longitude,
+      },
       isV8: false,
     );
     final token = (data?['access_token'] ?? '').toString().trim();
@@ -92,6 +107,7 @@ class AuthService {
       'workplace': workplace.toJson(),
       'selectedWorkplace': workplace.toJson(),
     });
+    WorkplaceCurrency.set(workplace.currency);
     return token;
   }
 

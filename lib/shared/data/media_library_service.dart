@@ -42,6 +42,8 @@ class MediaLibraryService {
     String search = '',
     int? categoryId,
     String visibility = 'all', // 'all' | 'public' | 'private'
+    String? kind, // 'image' | 'document' | 'video' | 'other'
+    bool newestFirst = false,
     int top = mediaPageSize,
     int skip = 0,
     bool withCount = true,
@@ -49,11 +51,13 @@ class MediaLibraryService {
     final filters = <String>[];
     if (categoryId != null) filters.add('category_id eq $categoryId');
     if (visibility != 'all') filters.add("visibility eq '$visibility'");
+    if (kind != null) filters.add("kind eq '$kind'");
     if (search.trim().isNotEmpty) {
       filters.add("contains(tolower(original_name),'${_escapeOData(search.trim().toLowerCase())}')");
     }
     final query = StringBuffer('media_items?\$top=$top&\$skip=$skip');
     if (withCount) query.write('&\$count=true');
+    if (newestFirst) query.write('&\$orderby=id desc');
     if (filters.isNotEmpty) query.write('&\$filter=${filters.join(' and ')}');
     final res = await _client.get(query.toString());
     final items = unwrapList(res).cast<Map<String, dynamic>>().map(MediaLibraryItem.fromJson).toList();

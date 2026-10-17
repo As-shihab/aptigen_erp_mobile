@@ -1,10 +1,15 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/theme/theme_controller.dart';
+import '../../../core/config/app_config.dart';
 import '../../auth/data/auth_service.dart';
 import '../../auth/models/user_model.dart';
+import 'billing_page.dart';
+import 'edit_workplace_page.dart';
+import 'invoices_page.dart';
+import '../../seller_verification/presentation/seller_verification_page.dart';
 
 /// Same visual format as D:\Mobile\aptigen's profile_page.dart (gradient
 /// hero header, avatar, grouped settings list with icon+chevron rows,
@@ -21,6 +26,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final _authService = AuthService(ApiClient());
   UserModel? _user;
+  String? _avatarUrl;
   bool _loading = true;
 
   @override
@@ -36,6 +42,25 @@ class _ProfilePageState extends State<ProfilePage> {
       _user = user;
       _loading = false;
     });
+    if (user != null) _loadAvatar(user.id);
+  }
+
+  // Same source as erp/desktop's header avatar (AppHeaderBar.tsx): the
+  // photo lives on this person's workplace_members row, not on `users`.
+  Future<void> _loadAvatar(int userId) async {
+    try {
+      final res = await ApiClient().get('workplace_members?\$filter=user_id eq $userId&\$select=id,image_url&\$top=1');
+      final rows = unwrapList(res);
+      final raw = rows.isEmpty ? '' : ((rows.first as Map)['image_url'] ?? '').toString().trim();
+      if (!mounted) return;
+      setState(() => _avatarUrl = raw.isEmpty
+          ? null
+          : (raw.startsWith('http') || raw.startsWith('data:')
+              ? raw
+              : '${AppConfig.apiBase}${raw.startsWith('/') ? '' : '/'}$raw'));
+    } catch (_) {
+      // Keep the initials avatar.
+    }
   }
 
   Future<void> _logout() async {
@@ -59,33 +84,21 @@ class _ProfilePageState extends State<ProfilePage> {
     Navigator.of(context).pushNamedAndRemoveUntil('/welcome', (route) => false);
   }
 
-  void _showThemePicker() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => const _ThemePicker(),
-    );
+  Future<void> _openWorkplace() async {
+    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const EditWorkplacePage()));
+    if (saved == true) _load();
   }
 
-  void _showWorkplaceInfo() {
-    final workplace = _user?.selectedWorkplace;
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Workplace', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 12),
-            Text(workplace?.name ?? 'No workplace selected', style: GoogleFonts.poppins()),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+  void _openBilling() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BillingPage()));
+  }
+
+  void _openSellerVerification() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SellerVerificationPage()));
+  }
+
+  void _openInvoices() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const InvoicesPage()));
   }
 
   @override
@@ -102,7 +115,7 @@ class _ProfilePageState extends State<ProfilePage> {
       child: SingleChildScrollView(
         child: Column(
           children: [
-            _ProfileHeader(user: _user, isDark: isDark, top: top),
+            _ProfileHeader(user: _user, avatarUrl: _avatarUrl, isDark: isDark, top: top),
             const SizedBox(height: 24),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -112,8 +125,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     title: 'Account',
                     isDark: isDark,
                     items: [
-                      _SettingItem(Icons.apartment_outlined, 'Workplace', _showWorkplaceInfo),
-                      _SettingItem(Icons.dark_mode_outlined, 'Appearance', _showThemePicker),
+                      _SettingItem(Icons.apartment_outlined, 'Workplace', _openWorkplace),
+                      _SettingItem(Icons.credit_card_outlined, 'Billing', _openBilling),
+                      _SettingItem(Icons.receipt_long_outlined, 'Invoices', _openInvoices),
+                      _SettingItem(Icons.verified_user_outlined, 'Verify seller', _openSellerVerification),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -131,16 +146,21 @@ class _ProfilePageState extends State<ProfilePage> {
 
 class _ProfileHeader extends StatelessWidget {
   final UserModel? user;
+  final String? avatarUrl;
   final bool isDark;
   final double top;
 
-  const _ProfileHeader({required this.user, required this.isDark, required this.top});
+  const _ProfileHeader({required this.user, required this.avatarUrl, required this.isDark, required this.top});
 
   @override
   Widget build(BuildContext context) {
     final initials = (user?.name ?? '').trim().isNotEmpty
         ? user!.name.trim().split(RegExp(r'\s+')).map((s) => s[0].toUpperCase()).take(2).join()
         : 'G';
+    final initialsText = Text(
+      initials,
+      style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white),
+    );
 
     return Container(
       width: double.infinity,
@@ -155,12 +175,29 @@ class _ProfileHeader extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(24, top + 20, 24, 28),
       child: Column(
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Profile',
-              style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white),
-            ),
+          Row(
+            children: [
+              // Only shown when this page was pushed as its own route (e.g.
+              // the Home tab's module grid tile) — as the bottom-nav Profile
+              // tab there's nothing to pop back to, so canPop is false and
+              // this stays hidden, same as before.
+              if (Navigator.canPop(context))
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pop(),
+                    borderRadius: BorderRadius.circular(20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.arrow_back, color: Colors.white, size: 22),
+                    ),
+                  ),
+                ),
+              Text(
+                'Profile',
+                style: GoogleFonts.poppins(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white),
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           Container(
@@ -171,11 +208,18 @@ class _ProfileHeader extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 3),
             ),
-            child: Center(
-              child: Text(
-                initials,
-                style: GoogleFonts.poppins(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white),
-              ),
+            child: ClipOval(
+              child: avatarUrl == null
+                  ? Center(child: initialsText)
+                  : CachedNetworkImage(
+                      imageUrl: avatarUrl!,
+                      fit: BoxFit.cover,
+                      width: 80,
+                      height: 80,
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      placeholder: (_, _) => Center(child: initialsText),
+                      errorWidget: (_, _, _) => Center(child: initialsText),
+                    ),
             ),
           ),
           const SizedBox(height: 12),
@@ -212,7 +256,7 @@ class _SettingsSection extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 10, left: 4),
           child: Text(
             title,
-            style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate600, letterSpacing: 0.5),
+            style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate600),
           ),
         ),
         Container(
@@ -295,57 +339,11 @@ class _LogoutButton extends StatelessWidget {
       child: OutlinedButton.icon(
         onPressed: onLogout,
         icon: const Icon(Icons.logout_rounded, color: AppColors.error),
-        label: Text('Sign Out', style: GoogleFonts.poppins(color: AppColors.error, fontWeight: FontWeight.w600)),
+        label: Text('Sign out', style: GoogleFonts.poppins(color: AppColors.error, fontWeight: FontWeight.w600)),
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: AppColors.error, width: 1.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-      ),
-    );
-  }
-}
-
-class _ThemePicker extends StatelessWidget {
-  const _ThemePicker();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    const icons = {
-      ThemeMode.light: Icons.light_mode_outlined,
-      ThemeMode.dark: Icons.dark_mode_outlined,
-      ThemeMode.system: Icons.brightness_auto_outlined,
-    };
-    const labels = {
-      ThemeMode.light: 'Light',
-      ThemeMode.dark: 'Dark',
-      ThemeMode.system: 'System default',
-    };
-
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Appearance',
-            style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: isDark ? Colors.white : AppColors.slate900),
-          ),
-          const SizedBox(height: 16),
-          ...ThemeMode.values.map((mode) {
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(icons[mode], color: isDark ? Colors.white : AppColors.slate900),
-              title: Text(labels[mode]!, style: GoogleFonts.poppins(color: isDark ? Colors.white : AppColors.slate900)),
-              onTap: () async {
-                await AppController.setThemeMode(mode);
-                if (context.mounted) Navigator.pop(context);
-              },
-            );
-          }),
-          const SizedBox(height: 8),
-        ],
       ),
     );
   }

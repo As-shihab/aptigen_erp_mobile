@@ -7,6 +7,20 @@ class AppStorage {
   static const _tokenKey = 'access_token';
   static const _userKey = 'auth_user';
   static const _themeKey = 'theme_mode';
+  static const _deviceIdKey = 'device_id';
+
+  /// Not a secret (just an identifier the backend uses to recognize this
+  /// install for the device-approval gate — see DeviceIdentity), so plain
+  /// SharedPreferences is fine, same as everything else in this class.
+  static Future<String?> getDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_deviceIdKey);
+  }
+
+  static Future<void> setDeviceId(String deviceId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_deviceIdKey, deviceId);
+  }
 
   static Future<void> setToken(String token) async {
     final prefs = await SharedPreferences.getInstance();

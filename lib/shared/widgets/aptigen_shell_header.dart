@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../core/network/socket_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../features/ai/presentation/ai_chat_page.dart';
 
 /// Persistent header for the bottom-nav shell (Home/Profile/Settings/
-/// Marketplace) — logo + brand on the left, workplace name centered,
-/// Wi-Fi (socket status) + notifications on the right. SAP Business/Fiori
-/// flat panel styling, same as AptigenAppBar (no filled color bar).
+/// Marketplace) — logo + workplace name on the left, Wi-Fi (socket status)
+/// + Aptigen AI + notifications on the right. SAP Business/Fiori flat panel
+/// styling, same as AptigenAppBar (no filled color bar).
 class AptigenShellHeader extends StatelessWidget implements PreferredSizeWidget {
   final String workplaceName;
   final VoidCallback onNotificationsTap;
@@ -20,6 +21,10 @@ class AptigenShellHeader extends StatelessWidget implements PreferredSizeWidget 
 
   @override
   Size get preferredSize => const Size.fromHeight(56);
+
+  void _openAi(BuildContext context) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AiChatPage()));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,18 +41,23 @@ class AptigenShellHeader extends StatelessWidget implements PreferredSizeWidget 
           child: Row(
             children: [
               const SizedBox(width: 12),
-              Image.asset('assets/icon/app_icon.png', width: 26, height: 26),
+              Container(
+                width: 32,
+                height: 32,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(color: isDark ? Colors.black : Colors.white, borderRadius: BorderRadius.circular(8)),
+                child: Image.asset('assets/icon/app_logo.png', fit: BoxFit.contain),
+              ),
               const SizedBox(width: 8),
-              const Text('Aptigen ERP', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-              Expanded(
-                child: Center(
-                  child: Text(
-                    workplaceName,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+              Flexible(
+                child: Text(
+                  workplaceName,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
               ),
+              const Spacer(),
               ValueListenableBuilder<bool>(
                 valueListenable: AppSocket.isConnected,
                 builder: (context, connected, _) => Tooltip(
@@ -61,6 +71,11 @@ class AptigenShellHeader extends StatelessWidget implements PreferredSizeWidget 
                     ),
                   ),
                 ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.auto_awesome, size: 20, color: AppColors.brand),
+                tooltip: 'Aptigen AI',
+                onPressed: () => _openAi(context),
               ),
               Stack(
                 clipBehavior: Clip.none,

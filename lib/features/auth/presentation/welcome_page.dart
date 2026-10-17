@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../data/auth_service.dart';
 import '../models/workplace_model.dart';
 import 'auth_meta.dart';
+import 'device_pending_page.dart';
 import 'widgets/email_step.dart';
 import 'widgets/password_step.dart';
 import 'widgets/select_workplace_step.dart';
@@ -124,7 +125,14 @@ class _WelcomePageState extends State<WelcomePage> {
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/launcher');
     } catch (error) {
-      setState(() => _loginError = _errorMessage(error, 'Could not activate workplace. Please try again.'));
+      if (error is ApiException && error.code == 'DEVICE_PENDING_APPROVAL') {
+        if (!mounted) return;
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DevicePendingPage(authService: _authService, workplace: selected),
+        ));
+      } else {
+        setState(() => _loginError = _errorMessage(error, 'Could not activate workplace. Please try again.'));
+      }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -183,6 +191,7 @@ class _WelcomePageState extends State<WelcomePage> {
     }
 
     setState(() => _isSubmitting = true);
+    WorkplaceOption? createdWorkplace;
     try {
       final inferredName = email.split('@').first.replaceAll(RegExp(r'[._-]+'), ' ').trim();
       await _authService.signup(inferredName.isNotEmpty ? inferredName : name, email, password);
@@ -191,13 +200,20 @@ class _WelcomePageState extends State<WelcomePage> {
       final userId = int.tryParse(user['id'].toString()) ?? 0;
       if (userId == 0) throw ApiException(0, 'Sign up completed but user information is invalid.');
 
-      final createdWorkplace = await _authService.createWorkplace(name, userId);
+      createdWorkplace = await _authService.createWorkplace(name, userId);
       await _authService.activateWorkplace(createdWorkplace);
 
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/launcher');
     } catch (error) {
-      setState(() => _loginError = _errorMessage(error, 'Sign up failed. Please try again.'));
+      if (error is ApiException && error.code == 'DEVICE_PENDING_APPROVAL' && createdWorkplace != null) {
+        if (!mounted) return;
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DevicePendingPage(authService: _authService, workplace: createdWorkplace!),
+        ));
+      } else {
+        setState(() => _loginError = _errorMessage(error, 'Sign up failed. Please try again.'));
+      }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }

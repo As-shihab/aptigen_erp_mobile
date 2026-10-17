@@ -71,7 +71,7 @@ class EmployeeDashboardService {
       'reason': reason?.trim().isEmpty == true ? null : reason,
       'status': 'PENDING',
       'current_serial': 1,
-    });
+    }, isV8: true);
   }
 
   Future<void> cancelLeaveRequest(int id) async {
