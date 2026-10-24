@@ -1,311 +1,185 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/network/http_client.dart';
-import '../../../../core/network/socket_client.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../data/employee_dashboard_service.dart';
+import '../../../../shared/ui/motion_kit.dart';
+import 'dash_common.dart';
+import 'hr_charts.dart';
 
-class ProfileTab extends StatefulWidget {
+/// The desktop dashboard's "My profile" tab (inline in EmployeeDashboard.tsx):
+/// month attendance progress, late vs on-time donut, payroll summary,
+/// devices + mobile login requests and the always-expanded details.
+/// The punch / today ring and leave balances live in the dashboard hero.
+class ProfileTab extends DashSection {
   final Map<String, dynamic> employee;
   final Map<String, dynamic> kpi;
-  final List<dynamic> leaveBalances;
-
-  const ProfileTab({super.key, required this.employee, required this.kpi, required this.leaveBalances});
+  const ProfileTab({super.key, required super.employeeId, required this.employee, required this.kpi, super.refreshToken});
 
   @override
   State<ProfileTab> createState() => _ProfileTabState();
 }
 
-class _ProfileTabState extends State<ProfileTab> {
-  final _service = EmployeeDashboardService(ApiClient());
-  late Map<String, dynamic> _kpi;
-  bool _punching = false;
-  void Function(dynamic)? _attendanceListener;
-
-  int get _employeeId => int.tryParse((widget.employee['id'] ?? '').toString()) ?? 0;
+class _ProfileTabState extends State<ProfileTab> with DashLoader<ProfileTab> {
+  Map<String, List<Map<String, dynamic>>> _data = const {};
 
   @override
-  void initState() {
-    super.initState();
-    _kpi = Map<String, dynamic>.from(widget.kpi);
-    _connectRealtime();
-  }
-
-  Future<void> _connectRealtime() async {
-    final context = await resolveSocketContext(ApiClient());
-    if (context == null || !mounted) return;
-    final socket = AppSocket.connect(context);
-
-    void listener(dynamic payload) {
-      if (payload is! Map) return;
-      final eventEmployeeId = int.tryParse((payload['employee_id'] ?? '').toString());
-      if (eventEmployeeId != _employeeId) return;
-      if (!mounted) return;
-      setState(() {
-        _kpi['checkIn'] = payload['check_in_time'];
-        _kpi['checkOut'] = payload['check_out_time'];
-      });
-    }
-
-    _attendanceListener = listener;
-    socket.on('attendance:recorded', listener);
-  }
-
-  @override
-  void dispose() {
-    final listener = _attendanceListener;
-    if (listener != null) {
-      AppSocket.instance?.off('attendance:recorded', listener);
-    }
-    super.dispose();
-  }
-
-  Future<void> _punch() async {
-    setState(() => _punching = true);
-    try {
-      final result = await _service.punchAttendance();
-      if (!mounted) return;
-      setState(() {
-        _kpi['checkIn'] = result['checkInTime'];
-        _kpi['checkOut'] = result['checkOutTime'];
-      });
-      final action = (result['action'] ?? '').toString();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(action == 'check-in' ? 'Checked in' : 'Checked out')),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      debugPrint('punchAttendance failed: $error');
-      final message = error is ApiException
-          ? 'Could not record attendance (${error.statusCode}): ${error.message}'
-          : 'Could not record attendance: $error';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    } finally {
-      if (mounted) setState(() => _punching = false);
-    }
-  }
-
-  String _fmtTime(dynamic value) {
-    if (value == null) return '—';
-    final parsed = DateTime.tryParse(value.toString());
-    if (parsed == null) return '—';
-    return DateFormat('hh:mm a').format(parsed.toLocal());
-  }
-
-  String _fmtDate(dynamic value) {
-    if (value == null) return '—';
-    final parsed = DateTime.tryParse(value.toString());
-    if (parsed == null) return '—';
-    return DateFormat('dd MMM yyyy').format(parsed.toLocal());
+  Future<void> fetch() async {
+    final d = await service.getOverview(widget.employeeId);
+    if (mounted) setState(() => _data = d);
   }
 
   @override
   Widget build(BuildContext context) {
-    final employee = widget.employee;
-    final firstName = (employee['first_name'] ?? '').toString();
-    final lastName = (employee['last_name'] ?? '').toString();
-    final name = [firstName, lastName].where((s) => s.trim().isNotEmpty).join(' ');
-    final initials = [firstName, lastName]
-        .where((s) => s.isNotEmpty)
-        .map((s) => s[0].toUpperCase())
-        .join();
-    final isActive = employee['is_active'] == true;
-    final department = (employee['department'] as Map?)?['name']?.toString();
-    final designation = (employee['designation'] as Map?)?['name']?.toString();
-    final shift = (employee['shift'] as Map?)?['name']?.toString();
-    final salary = num.tryParse((_kpi['salary'] ?? 0).toString()) ?? 0;
-    final presentDays = _kpi['presentDaysThisMonth'] ?? 0;
+    final p = MarketPalette.of(context);
+    final e = widget.employee;
+    final present = toInt(widget.kpi['presentDaysThisMonth']);
+    final elapsed = DateTime.now().day;
+    final rate = (present / (elapsed < 1 ? 1 : elapsed)).clamp(0.0, 1.0);
 
-    final hasCheckedIn = _kpi['checkIn'] != null;
-    final hasCheckedOut = _kpi['checkOut'] != null;
-    final canCheckIn = !hasCheckedIn;
-    final canCheckOut = hasCheckedIn && !hasCheckedOut;
+    final logs = _data['logs'] ?? const [];
+    final late = logs.where((r) => asBool(r['has_late'])).length;
+    final payrolls = (_data['payrolls'] ?? const []).reversed.toList();
+    final totalPaid = payrolls.fold<double>(0, (a, r) => a + toDouble(r['net_salary']));
+    final devices = _data['devices'] ?? const [];
+    final deviceReqs = _data['deviceRequests'] ?? const [];
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.slate400.withValues(alpha: 0.2)),
-          ),
-          child: Column(
-            children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: AppColors.brand.withValues(alpha: 0.15),
-                child: Text(initials, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.brand)),
-              ),
-              const SizedBox(height: 12),
-              Text(name.isEmpty ? '—' : name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              if (designation != null) Text(designation, style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                alignment: WrapAlignment.center,
-                children: [
-                  if ((employee['employee_no'] ?? '').toString().isNotEmpty)
-                    _Chip(text: employee['employee_no'].toString(), color: AppColors.brand),
-                  _Chip(text: isActive ? '● Active' : '● Inactive', color: isActive ? AppColors.success : AppColors.slate400),
-                  if (department != null) _Chip(text: department, color: AppColors.slate600),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-                      onPressed: (canCheckIn && !_punching) ? _punch : null,
-                      icon: const Icon(Icons.login, size: 18),
-                      label: Text(_punching && canCheckIn ? 'Checking in...' : 'Check In'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-                      onPressed: (canCheckOut && !_punching) ? _punch : null,
-                      icon: const Icon(Icons.logout, size: 18),
-                      label: Text(_punching && canCheckOut ? 'Checking out...' : 'Check Out'),
-                    ),
-                  ),
-                ],
-              ),
-              if (hasCheckedIn && hasCheckedOut) ...[
-                const SizedBox(height: 8),
-                Text('Attendance completed for today.', style: TextStyle(fontSize: 11, color: AppColors.slate600)),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 2.2,
-          children: [
-            _KpiCard(label: 'Check-In', value: _fmtTime(_kpi['checkIn']), color: AppColors.success),
-            _KpiCard(label: 'Check-Out', value: _fmtTime(_kpi['checkOut']), color: AppColors.brand),
-            _KpiCard(label: 'Salary', value: salary.toStringAsFixed(0), color: AppColors.warning),
-            _KpiCard(label: 'Present', value: '$presentDays days', color: AppColors.info),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _SectionCard(
-          title: 'Details',
-          children: [
-            _DetailRow(label: 'Email', value: (employee['email'] ?? '—').toString()),
-            _DetailRow(label: 'Phone', value: (employee['contact_number'] ?? '—').toString()),
-            _DetailRow(label: 'Shift', value: shift ?? '—'),
-            _DetailRow(label: 'Joining Date', value: _fmtDate(employee['joining_date'])),
-            _DetailRow(label: 'Blood Group', value: (employee['blood_group'] ?? '—').toString()),
-            _DetailRow(label: 'Emergency Contact', value: (employee['emergency_contact_name'] ?? '—').toString()),
-          ],
-        ),
-        if (widget.leaveBalances.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          _SectionCard(
-            title: 'Leave Balances',
-            children: widget.leaveBalances.map((raw) {
-              final b = (raw as Map);
-              return _DetailRow(label: (b['name'] ?? '—').toString(), value: '${b['used']}/${b['total']}');
+    String v(dynamic x) => x == null || '$x'.trim().isEmpty ? '-' : '$x';
+    String date(dynamic x) => parseDate(x) == null ? '-' : fmtDate(parseDate(x));
+
+    return SliverMainAxisGroup(slivers: [
+      // This month progress
+      sliverBox(GlowCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const AccentIcon(Icons.event_available_rounded, accent: Accent.emerald, size: 34),
+            const SizedBox(width: 10),
+            Expanded(child: Text('This month', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: p.text))),
+            CountUp(value: rate * 100, format: (x) => '${x.round()}%', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: p.ok)),
+          ]),
+          const SizedBox(height: 12),
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            CountUp(value: present, format: (x) => '${x.round()}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: p.text, height: 1)),
+            Padding(padding: const EdgeInsets.only(left: 6, bottom: 3), child: Text('of $elapsed days present so far', style: TextStyle(fontSize: 12, color: p.label))),
+          ]),
+          const SizedBox(height: 10),
+          GrowBar(value: rate, color: const Color(0xFF30914C), height: 9),
+          const SizedBox(height: 6),
+          Text('${(rate * 100).round()}% attendance rate', style: TextStyle(fontSize: 11.5, color: p.label)),
+        ]),
+      )),
+      if (loading)
+        sliverSkeleton(count: 3, height: 200)
+      else if (error != null)
+        sliverEmpty(icon: Icons.cloud_off_rounded, title: 'Could not load your overview', message: error, actionLabel: 'Retry', onAction: reload)
+      else ...[
+        sliverBox(ChartPanel(
+          title: 'Late vs on time',
+          subtitle: '${logs.length} recorded days',
+          icon: Icons.alarm_rounded,
+          accent: Accent.amber,
+          height: 170,
+          empty: logs.isEmpty,
+          child: DonutLegend(centerLabel: 'Days', slices: [
+            ChartSlice('On time', (logs.length - late).toDouble(), const Color(0xFF30914C)),
+            ChartSlice('Late', late.toDouble(), const Color(0xFFE76500)),
+          ]),
+        )),
+        sliverBox(ChartPanel(
+          title: 'Total payroll paid',
+          subtitle: 'Net pay across last ${payrolls.length} pay period(s)',
+          icon: Icons.account_balance_wallet_rounded,
+          accent: Accent.emerald,
+          height: 170,
+          empty: payrolls.isEmpty,
+          trailing: CountUp(value: totalPaid, format: (x) => money(x), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: p.ok)),
+          child: GroupedBarChart(
+            categories: payrolls.map((r) {
+              final d = parseDate(r['start_date']);
+              return d == null ? '' : DateFormat('MMM').format(d.toLocal());
             }).toList(),
+            series: [ChartSeries('Net pay', payrolls.map((r) => toDouble(r['net_salary'])).toList(), const Color(0xFF30914C))],
           ),
-        ],
+        )),
+        sliverBox(GlowCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const AccentIcon(Icons.laptop_mac_rounded, accent: Accent.ocean, size: 34),
+              const SizedBox(width: 10),
+              Text('My devices', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: p.text)),
+            ]),
+            const SizedBox(height: 10),
+            if (devices.isEmpty)
+              Text('No devices currently assigned to you.', style: TextStyle(fontSize: 12.5, color: p.label))
+            else
+              for (final d in devices)
+                _miniRow(p, Icons.devices_other_rounded, '${(d['asset'] as Map?)?['name'] ?? '-'}', '${((d['asset'] as Map?)?['asset_group'] as Map?)?['name'] ?? 'Uncategorized'}', null),
+            Divider(height: 24, color: p.line),
+            Text('Mobile login requests', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: p.label)),
+            const SizedBox(height: 8),
+            if (deviceReqs.isEmpty)
+              Text('No mobile device requests yet.', style: TextStyle(fontSize: 12.5, color: p.label))
+            else
+              for (final r in deviceReqs)
+                _miniRow(p, Icons.smartphone_rounded, v(r['device_name']) == '-' ? 'Unknown device' : '${r['device_name']}', v(r['platform']),
+                    StatusPill(humanize('${r['status']}'), tone: toneForStatus('${r['status']}'))),
+          ]),
+        )),
       ],
-    );
+      sliverBox(const SectionHeader('Employee details')),
+      sliverStagger(count: 4, padding: const EdgeInsets.fromLTRB(16, 0, 16, 0), builder: (_, i) {
+        final sections = [
+          ('Personal', Icons.person_rounded, Accent.ocean, [
+            ('First name', v(e['first_name'])),
+            ('Last name', v(e['last_name'])),
+            ('Gender', humanize(v(e['gender']))),
+            ('Date of birth', date(e['date_of_birth'])),
+            ('Blood group', v(e['blood_group'])),
+            ('Religion', v(e['religion'])),
+            ('NID number', v(e['nid'])),
+          ]),
+          ('Employment', Icons.apartment_rounded, Accent.emerald, [
+            ('Department', v((e['department'] as Map?)?['name'])),
+            ('Designation', v((e['designation'] as Map?)?['name'])),
+            ('Shift', v((e['shift'] as Map?)?['name'])),
+            ('Joining date', date(e['joining_date'])),
+          ]),
+          ('Contact', Icons.call_rounded, Accent.ocean, [
+            ('Email', v(e['email'])),
+            ('Phone', v(e['contact_number'])),
+          ]),
+          ('Emergency contact', Icons.health_and_safety_rounded, Accent.rose, [
+            ('Name', v(e['emergency_contact_name'])),
+            ('Number', v(e['emergency_contact_number'])),
+          ]),
+        ];
+        final s = sections[i];
+        return GlowCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              AccentIcon(s.$2, accent: s.$3, size: 30),
+              const SizedBox(width: 10),
+              Text(s.$1, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: s.$3.primary)),
+            ]),
+            const SizedBox(height: 8),
+            for (final f in s.$4) InfoRow(f.$1, f.$2),
+          ]),
+        );
+      }),
+    ]);
   }
-}
 
-class _Chip extends StatelessWidget {
-  final String text;
-  final Color color;
-  const _Chip({required this.text, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
-      child: Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
-    );
-  }
-}
-
-class _KpiCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  const _KpiCard({required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(label.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: color)),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  final String title;
-  final List<Widget> children;
-  const _SectionCard({required this.title, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.slate400.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Text(title.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+  Widget _miniRow(MarketPalette p, IconData icon, String title, String sub, Widget? trailing) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          Icon(icon, size: 18, color: p.brand),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.text)),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: p.label)),
+            ]),
           ),
-          ...children,
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _DetailRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: AppColors.slate600, fontSize: 12)),
-          Flexible(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-        ],
-      ),
-    );
-  }
+          ?trailing,
+        ]),
+      );
 }

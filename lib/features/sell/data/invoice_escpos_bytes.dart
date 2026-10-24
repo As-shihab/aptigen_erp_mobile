@@ -5,7 +5,7 @@ import 'sales_order_model.dart';
 /// Builds the raw ESC/POS byte sequence for one sale's receipt, printed
 /// directly to a paired Bluetooth thermal printer (`PosPrinterService`) —
 /// same content as `invoice_pdf_builder.dart`'s PDF (workplace name header,
-/// `POS-000123` invoice number, itemized lines, totals, payments, receipt
+/// `SO-000123` sales order number, itemized lines, totals, payments, receipt
 /// footer), just as literal printer commands instead of a page description.
 /// [lineWidth] and [fullCut] come from the configured `PrinterDevice`
 /// (`features/settings/data/printer_device.dart`) — 32 chars/58mm or 48
@@ -25,7 +25,7 @@ List<int> buildInvoiceEscPosBytes(
   b.line(workplaceName);
   b.boldOff();
   b.textSize();
-  b.line(sale.invoiceNo);
+  b.line('Sales order ${sale.invoiceNo}');
   if (sale.status != 'COMPLETED') {
     b.boldOn();
     b.line('*** ${sale.status} ***');

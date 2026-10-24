@@ -155,7 +155,7 @@ class ChatThreadViewState extends State<ChatThreadView> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      color: isDark ? AppColors.slate900 : AppColors.slate50,
+      color: isDark ? AppColors.pageDark : AppColors.pageLight,
       child: Column(
         children: [
           Expanded(

@@ -54,6 +54,15 @@ class AuthService {
         .toList();
   }
 
+  /// Every workplace the signed-in user owns or was added to, from
+  /// `GET /api/workplace/mine` — each row carries `relation`
+  /// ('owner' | 'member'), `roles`, `is_current` and `can_edit` (the
+  /// server enforces the same rule on `PUT workplace/me|:id`).
+  Future<List<Map<String, dynamic>>> fetchMyWorkplaces() async {
+    final data = await _client.get('workplace/mine', isV8: false);
+    return unwrapList(data).whereType<Map>().map((row) => row.cast<String, dynamic>()).toList();
+  }
+
   /// Step: create a new workplace for the given owner.
   Future<WorkplaceOption> createWorkplace(String name, int ownerId) async {
     final data = await _client.post(

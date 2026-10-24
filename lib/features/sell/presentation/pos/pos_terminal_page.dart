@@ -25,7 +25,7 @@ import '../sales_report_page.dart';
 import '../sell_analytics_page.dart';
 import '../sell_products_page.dart';
 import '../sell_settings_page.dart';
-import '../widgets/sell_ui.dart' show MarketPalette, MarketCard, MarketTone, StatusPill, MarketEmpty, SkeletonBox, showMarketSheet, marketToast;
+import '../widgets/sell_ui.dart' show MarketPalette, MarketCard, MarketTone, StatusPill, MarketEmpty, SkeletonBox, showMarketSheet, marketToast, AccentListIcon;
 import 'cart_page.dart';
 import 'pos_receipt_page.dart';
 import 'widgets/held_bills_sheet.dart';
@@ -266,8 +266,18 @@ class _PosTerminalPageState extends State<PosTerminalPage> {
       setState(() => _carts[_activeIndex] = CartTab(label: closedTabLabel, taxRate: _orderSettings.defaultTaxRate));
       await _refreshStockFor(result.completedSale!.items.map((i) => i.productId).toSet());
       final showReceipt = await PosLocalPrefs.getShowReceiptAfterCheckout();
-      if (!mounted || !showReceipt) return;
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => PosReceiptPage(sale: result.completedSale!, receiptFooter: _orderSettings.receiptFooter)));
+      final autoPrint = await PosLocalPrefs.getAutoPrintReceipt(isPharma: widget.isPharma);
+      if (!mounted) return;
+      if (!showReceipt) {
+        if (autoPrint) {
+          final error = await printSaleReceiptToBluetooth(result.completedSale!, receiptFooter: _orderSettings.receiptFooter);
+          if (mounted && error != null) marketToast(context, error, error: true);
+        }
+        return;
+      }
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PosReceiptPage(sale: result.completedSale!, receiptFooter: _orderSettings.receiptFooter, autoPrint: autoPrint),
+      ));
     }
   }
 
@@ -328,7 +338,7 @@ class _PosTerminalPageState extends State<PosTerminalPage> {
   }
 
   Future<void> _openSettings() async {
-    final saved = await showPosSettingsSheet(context, settings: _orderSettings, warehouses: _warehouses);
+    final saved = await showPosSettingsSheet(context, settings: _orderSettings, warehouses: _warehouses, isPharma: widget.isPharma);
     if (saved != null && mounted) setState(() => _orderSettings = saved);
   }
 
@@ -344,22 +354,22 @@ class _PosTerminalPageState extends State<PosTerminalPage> {
         final p = MarketPalette.of(sheetContext);
         final tiles = widget.isPharma
             ? <Widget>[
-                _menuTile(sheetContext, Icons.inventory_2_outlined, 'Inventory', () => const ProductsListPage(filter: 'is_pharma eq true', title: 'Pharma Inventory')),
-                _menuTile(sheetContext, Icons.receipt_long_outlined, 'Sales', () => const SalesOrderListPage(isPharma: true, title: 'Pharma Sales')),
+                _menuTile(sheetContext, 0, Icons.inventory_2_outlined, 'Inventory', () => const ProductsListPage(filter: 'is_pharma eq true', title: 'Pharma Inventory')),
+                _menuTile(sheetContext, 1, Icons.receipt_long_outlined, 'Sales', () => const SalesOrderListPage(isPharma: true, title: 'Pharma Sales')),
               ]
             : <Widget>[
-                _menuTile(sheetContext, Icons.storefront_outlined, 'Online market', () => const MarketHubPage()),
-                _menuTile(sheetContext, Icons.insights_outlined, 'Analytics', () => const SellAnalyticsPage()),
-                _menuTile(sheetContext, Icons.receipt_long_outlined, 'Sales orders', () => const SalesOrderListPage(title: 'Sales orders')),
-                _menuTile(sheetContext, Icons.description_outlined, 'Invoices', () => const SalesOrderListPage(title: 'Invoices', statusFilter: 'COMPLETED')),
-                _menuTile(sheetContext, Icons.payments_outlined, 'Payments', () => const PaymentsListPage()),
-                _menuTile(sheetContext, Icons.assignment_return_outlined, 'Sales returns', () => const SalesOrderListPage(statusFilter: 'REFUNDED', title: 'Sales returns')),
-                _menuTile(sheetContext, Icons.pause_circle_outline, 'Held bills', () => const HeldBillsListPage()),
-                _menuTile(sheetContext, Icons.inventory_2_outlined, 'Products', () => const SellProductsPage()),
-                _menuTile(sheetContext, Icons.bar_chart_outlined, 'Sales reports', () => const SalesReportPage()),
-                _menuTile(sheetContext, Icons.people_alt_outlined, 'Clients', () => const ClientsListPage()),
-                _menuTile(sheetContext, Icons.groups_outlined, 'Client groups', () => SimpleEntityListPage(config: clientGroupsConfig())),
-                _menuTile(sheetContext, Icons.settings_outlined, 'Sales settings', () => const SellSettingsPage()),
+                _menuTile(sheetContext, 2, Icons.storefront_outlined, 'Online market', () => const MarketHubPage()),
+                _menuTile(sheetContext, 3, Icons.insights_outlined, 'Analytics', () => const SellAnalyticsPage()),
+                _menuTile(sheetContext, 4, Icons.receipt_long_outlined, 'Sales orders', () => const SalesOrderListPage(title: 'Sales orders')),
+                _menuTile(sheetContext, 5, Icons.description_outlined, 'Invoices', () => const SalesOrderListPage(title: 'Invoices', statusFilter: 'COMPLETED')),
+                _menuTile(sheetContext, 6, Icons.payments_outlined, 'Payments', () => const PaymentsListPage()),
+                _menuTile(sheetContext, 7, Icons.assignment_return_outlined, 'Sales returns', () => const SalesOrderListPage(statusFilter: 'REFUNDED', title: 'Sales returns')),
+                _menuTile(sheetContext, 8, Icons.pause_circle_outline, 'Held bills', () => const HeldBillsListPage()),
+                _menuTile(sheetContext, 9, Icons.inventory_2_outlined, 'Products', () => const SellProductsPage()),
+                _menuTile(sheetContext, 10, Icons.bar_chart_outlined, 'Sales reports', () => const SalesReportPage()),
+                _menuTile(sheetContext, 11, Icons.people_alt_outlined, 'Clients', () => const ClientsListPage()),
+                _menuTile(sheetContext, 12, Icons.groups_outlined, 'Client groups', () => SimpleEntityListPage(config: clientGroupsConfig())),
+                _menuTile(sheetContext, 13, Icons.settings_outlined, 'Sales settings', () => const SellSettingsPage()),
               ];
         return ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(sheetContext).size.height * 0.85),
@@ -421,7 +431,7 @@ class _PosTerminalPageState extends State<PosTerminalPage> {
     );
   }
 
-  Widget _menuTile(BuildContext sheetContext, IconData icon, String label, Widget Function() pageBuilder) {
+  Widget _menuTile(BuildContext sheetContext, int index, IconData icon, String label, Widget Function() pageBuilder) {
     final p = MarketPalette.of(sheetContext);
     return InkWell(
       onTap: () {
@@ -432,12 +442,7 @@ class _PosTerminalPageState extends State<PosTerminalPage> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(color: p.brandSoft, borderRadius: BorderRadius.circular(9)),
-              child: Icon(icon, size: 18, color: p.brand),
-            ),
+            AccentListIcon(icon, index: index, size: 34),
             const SizedBox(width: 12),
             Expanded(child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: p.text))),
             Icon(Icons.chevron_right, size: 18, color: p.label),

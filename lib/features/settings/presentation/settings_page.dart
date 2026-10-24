@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../sell/market/presentation/widgets/market_ui.dart';
+import 'approver_chain/approver_chain_pages.dart';
+import 'audit/audit_logs_page.dart';
+import 'device_requests/device_requests_page.dart';
+import 'devices/device_hub_page.dart';
 import 'media/media_library_page.dart';
+import 'notifications/notification_settings_page.dart';
 import 'printers/printers_list_page.dart';
+import 'roles/role_permission_page.dart';
+import 'update_data/update_data_page.dart';
+import 'users/user_list_page.dart';
 
-/// Settings tab — theme (with a live preview card per mode), then the
-/// workplace tools: media library and receipt printers.
+/// Settings tab — theme (with a live preview card per mode), then every
+/// desktop settings area: people and access, activity, workplace tools and
+/// this app.
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
@@ -44,29 +53,55 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 22),
+          const _SectionTitle('People and access'),
+          _NavGroup(rows: [
+            _NavRow(icon: Icons.people_alt_outlined, tone: MarketTone.brand, title: 'User list', subtitle: 'Users, roles and access to this workplace', onTap: () => _open(context, const UserListPage())),
+            _NavRow(icon: Icons.admin_panel_settings_outlined, tone: MarketTone.info, title: 'Role permission', subtitle: 'What each role can see and do', onTap: () => _open(context, const RolePermissionPage())),
+            _NavRow(icon: Icons.link_rounded, tone: MarketTone.neutral, title: 'Approver chain', subtitle: 'Approval steps for requests', onTap: () => _open(context, const ApproveTypesPage())),
+            _NavRow(icon: Icons.verified_user_outlined, tone: MarketTone.warn, title: 'Device request', subtitle: 'Approve or reject device sign-ins', onTap: () => _open(context, const DeviceRequestsPage())),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionTitle('Activity'),
+          _NavGroup(rows: [
+            _NavRow(icon: Icons.history_rounded, tone: MarketTone.neutral, title: 'Audit logs', subtitle: 'Who changed what, and when', onTap: () => _open(context, const AuditLogsPage())),
+            _NavRow(icon: Icons.notifications_none_rounded, tone: MarketTone.info, title: 'Notifications', subtitle: 'Push and email preferences', onTap: () => _open(context, const NotificationSettingsPage())),
+          ]),
+          const SizedBox(height: 22),
           const _SectionTitle('Workplace'),
-          MarketCard(
-            padding: EdgeInsets.zero,
-            child: Column(children: [
-              _NavRow(
-                icon: Icons.perm_media_outlined,
-                tone: MarketTone.info,
-                title: 'Media',
-                subtitle: 'Photos and files used across products, listings and banners',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MediaLibraryPage())),
-              ),
-              Divider(height: 1, indent: 62, color: p.line),
-              _NavRow(
-                icon: Icons.print_outlined,
-                tone: MarketTone.brand,
-                title: 'Printers',
-                subtitle: 'Receipt printers for the point of sale',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrintersListPage())),
-              ),
-            ]),
-          ),
+          _NavGroup(rows: [
+            _NavRow(icon: Icons.perm_media_outlined, tone: MarketTone.info, title: 'Media', subtitle: 'Photos and files used across products, listings and banners', onTap: () => _open(context, const MediaLibraryPage())),
+            _NavRow(icon: Icons.print_outlined, tone: MarketTone.brand, title: 'Printers', subtitle: 'Receipt printers for the point of sale', onTap: () => _open(context, const PrintersListPage())),
+            _NavRow(icon: Icons.router_outlined, tone: MarketTone.ok, title: 'Device', subtitle: 'Fingerprint devices, sensors and switches', onTap: () => _open(context, const DeviceHubPage())),
+          ]),
+          const SizedBox(height: 22),
+          const _SectionTitle('This app'),
+          _NavGroup(rows: [
+            _NavRow(icon: Icons.sync_rounded, tone: MarketTone.neutral, title: 'Update and data', subtitle: 'Version, cache and local data', onTap: () => _open(context, const UpdateDataPage())),
+          ]),
         ],
       ),
+    );
+  }
+}
+
+void _open(BuildContext context, Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+
+/// One card of navigation rows separated by hairlines.
+class _NavGroup extends StatelessWidget {
+  final List<_NavRow> rows;
+  const _NavGroup({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = MarketPalette.of(context);
+    return MarketCard(
+      padding: EdgeInsets.zero,
+      child: Column(children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) Divider(height: 1, indent: 62, color: p.line),
+          rows[i],
+        ],
+      ]),
     );
   }
 }

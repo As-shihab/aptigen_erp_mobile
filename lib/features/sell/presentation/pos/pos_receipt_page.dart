@@ -11,26 +11,44 @@ import '../../data/pos_printer_service.dart';
 import '../../data/sales_order_model.dart';
 import '../widgets/sell_ui.dart' show MarketPalette, MarketCard, StatusPill, FadeSlideIn, marketToast, saleStatusLabel, saleStatusTone;
 
+/// Sends a sale's receipt as raw ESC/POS bytes to the default Bluetooth
+/// printer (Settings > Printers). Returns an error message, or null when
+/// it was sent.
+Future<String?> printSaleReceiptToBluetooth(SalesOrder sale, {String? receiptFooter, String? workplaceName}) async {
+  try {
+    var name = workplaceName;
+    if (name == null || name.trim().isEmpty) {
+      final user = await AuthService(ApiClient()).getStoredUser();
+      name = (user?.companyName.trim().isNotEmpty ?? false) ? user!.companyName.trim() : 'Aptigen POS';
+    }
+    final device = await PrinterDevicesService().getDefault();
+    if (device?.macAddress == null) return 'No printer configured. Add one in Settings > Printers.';
+    final bytes = buildInvoiceEscPosBytes(sale, workplaceName: name, receiptFooter: receiptFooter, lineWidth: device!.lineWidth, fullCut: device.fullCut);
+    await PosPrinterService().printBytes(bytes, macAddress: device.macAddress!);
+    return null;
+  } catch (error) {
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+}
+
 /// Post-checkout receipt — same field set and layout idea as desktop's
-/// `PosReceipt.tsx` (workplace name header, `POS-000123` invoice number,
-/// itemized qty×price lines, totals block, receipt-footer text). Two print
-/// paths: the printer icon hands a generated PDF to the platform's native
-/// print dialog (Android's print framework includes a "Save as PDF" virtual
-/// printer, covering both desktop's `printReceipt()` and
-/// `downloadInvoice()` in one flow); the Bluetooth icon sends raw ESC/POS
-/// bytes straight to the register's paired thermal printer (configured in
-/// POS Settings), no OS dialog at all.
+/// `PosReceipt.tsx` (workplace name header, `SO-000123` sales order number,
+/// itemized qty×price lines, totals block, receipt-footer text). The
+/// download icon hands a generated PDF to the platform's print dialog
+/// (save as PDF or any system printer); the bottom print button sends raw
+/// ESC/POS bytes to the paired Bluetooth thermal printer. With
+/// [autoPrint] the Bluetooth print starts as soon as the page opens.
 class PosReceiptPage extends StatefulWidget {
   final SalesOrder sale;
   final String? receiptFooter;
-  const PosReceiptPage({super.key, required this.sale, this.receiptFooter});
+  final bool autoPrint;
+  const PosReceiptPage({super.key, required this.sale, this.receiptFooter, this.autoPrint = false});
 
   @override
   State<PosReceiptPage> createState() => _PosReceiptPageState();
 }
 
 class _PosReceiptPageState extends State<PosReceiptPage> {
-  final _printerService = PosPrinterService();
   String _workplaceName = 'Aptigen POS';
   bool _thermalPrinting = false;
 
@@ -38,6 +56,7 @@ class _PosReceiptPageState extends State<PosReceiptPage> {
   void initState() {
     super.initState();
     _loadWorkplaceName();
+    if (widget.autoPrint) WidgetsBinding.instance.addPostFrameCallback((_) => _printThermal());
   }
 
   Future<void> _loadWorkplaceName() async {
@@ -47,30 +66,18 @@ class _PosReceiptPageState extends State<PosReceiptPage> {
     if (name.isNotEmpty) setState(() => _workplaceName = name);
   }
 
-  Future<void> _print() async {
+  Future<void> _download() async {
     final bytes = await buildInvoicePdf(widget.sale, workplaceName: _workplaceName, receiptFooter: widget.receiptFooter);
     await Printing.layoutPdf(onLayout: (_) async => bytes, name: widget.sale.invoiceNo);
   }
 
   Future<void> _printThermal() async {
+    if (_thermalPrinting) return;
     setState(() => _thermalPrinting = true);
-    try {
-      final device = await PrinterDevicesService().getDefault();
-      if (device?.macAddress == null) {
-        if (!mounted) return;
-        marketToast(context, 'No printer configured. Add one in Settings > Printers.', error: true);
-        return;
-      }
-      final bytes = buildInvoiceEscPosBytes(widget.sale, workplaceName: _workplaceName, receiptFooter: widget.receiptFooter, lineWidth: device!.lineWidth, fullCut: device.fullCut);
-      await _printerService.printBytes(bytes, macAddress: device.macAddress!);
-      if (!mounted) return;
-      marketToast(context, 'Sent to thermal printer.');
-    } catch (error) {
-      if (!mounted) return;
-      marketToast(context, error.toString().replaceFirst('Exception: ', ''), error: true);
-    } finally {
-      if (mounted) setState(() => _thermalPrinting = false);
-    }
+    final error = await printSaleReceiptToBluetooth(widget.sale, receiptFooter: widget.receiptFooter, workplaceName: _workplaceName);
+    if (!mounted) return;
+    setState(() => _thermalPrinting = false);
+    marketToast(context, error ?? 'Sent to printer.', error: error != null);
   }
 
   @override
@@ -89,12 +96,7 @@ class _PosReceiptPageState extends State<PosReceiptPage> {
         title: Text('Invoice', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: p.text)),
         automaticallyImplyLeading: false,
         actions: [
-          IconButton(
-            icon: _thermalPrinting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.bluetooth),
-            tooltip: 'Print to thermal printer',
-            onPressed: _thermalPrinting ? null : _printThermal,
-          ),
-          IconButton(icon: const Icon(Icons.print_outlined), tooltip: 'Print (PDF)', onPressed: _print),
+          IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Download receipt', onPressed: _download),
         ],
       ),
       body: ListView(
@@ -137,7 +139,7 @@ class _PosReceiptPageState extends State<PosReceiptPage> {
                 children: [
                   Text(_workplaceName, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: p.text)),
                   const SizedBox(height: 3),
-                  Text(sale.invoiceNo, style: TextStyle(color: p.label, fontSize: 12, fontWeight: FontWeight.w600)),
+                  Text('Sales order ${sale.invoiceNo}', style: TextStyle(color: p.label, fontSize: 12, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 2),
                   Text(displayDate(sale.completedAt ?? sale.createdAt), style: TextStyle(color: p.label, fontSize: 11.5)),
                   const SizedBox(height: 14),
@@ -215,13 +217,15 @@ class _PosReceiptPageState extends State<PosReceiptPage> {
                   child: SizedBox(
                     height: 48,
                     child: OutlinedButton.icon(
-                      onPressed: _print,
+                      onPressed: _thermalPrinting ? null : _printThermal,
                       style: OutlinedButton.styleFrom(
                         foregroundColor: p.text,
                         side: BorderSide(color: p.line),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      icon: const Icon(Icons.print_outlined, size: 18),
+                      icon: _thermalPrinting
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.print_outlined, size: 18),
                       label: const Text('Print'),
                     ),
                   ),

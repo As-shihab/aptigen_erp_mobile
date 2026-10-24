@@ -394,7 +394,7 @@ class _PhotoTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: isDark ? AppColors.slate900 : AppColors.slate50,
+        color: isDark ? AppColors.pageDark : AppColors.pageLight,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),

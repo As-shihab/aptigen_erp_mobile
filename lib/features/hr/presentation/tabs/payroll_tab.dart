@@ -1,162 +1,124 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/network/http_client.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../../../shared/widgets/async_state_view.dart';
-import '../../data/employee_dashboard_service.dart';
+import '../../../../shared/ui/motion_kit.dart';
+import 'dash_common.dart';
+import 'hr_charts.dart';
 
-const Map<String, Color> _payrollStatusColors = {
-  'PENDING': AppColors.warning,
-  'PAID': AppColors.success,
-  'CANCELLED': AppColors.error,
-};
-
-class PayrollTab extends StatefulWidget {
-  final int employeeId;
-  const PayrollTab({super.key, required this.employeeId});
+/// Ported from desktop tabs/PayrollTab.tsx — pay periods with a payslip
+/// breakdown sheet, plus net-pay totals and a trend chart.
+class PayrollTab extends DashSection {
+  const PayrollTab({super.key, required super.employeeId, super.refreshToken});
 
   @override
   State<PayrollTab> createState() => _PayrollTabState();
 }
 
-class _PayrollTabState extends State<PayrollTab> {
-  final _service = EmployeeDashboardService(ApiClient());
-  bool _loading = true;
-  String? _error;
-  List<dynamic> _rows = [];
+class _PayrollTabState extends State<PayrollTab> with DashLoader<PayrollTab> {
+  List<Map<String, dynamic>> _rows = [];
 
   @override
-  void initState() {
-    super.initState();
-    _load();
+  Future<void> fetch() async {
+    final rows = await service.getPayrolls(widget.employeeId);
+    if (mounted) setState(() => _rows = rows);
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final rows = await _service.getPayrolls(widget.employeeId);
-      if (!mounted) return;
-      setState(() => _rows = rows);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _error = 'Could not load payroll.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
+  String _period(Map<String, dynamic> r) => '${fmtDate(parseDate(r['start_date']))} to ${fmtDate(parseDate(r['end_date']))}';
 
-  num _n(Map row, String key) => num.tryParse((row[key] ?? 0).toString()) ?? 0;
-
-  void _openDetail(Map<String, dynamic> row) {
-    final start = DateTime.tryParse((row['start_date'] ?? '').toString());
-    final end = DateTime.tryParse((row['end_date'] ?? '').toString());
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (sheetContext) => DraggableScrollableSheet(
-        initialChildSize: 0.75,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => ListView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(20),
-          children: [
-            const Text('Payslip Detail', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 4),
-            Text(
-              '${start != null ? DateFormat('dd MMM yyyy').format(start) : '—'} → ${end != null ? DateFormat('dd MMM yyyy').format(end) : '—'}',
-              style: TextStyle(color: AppColors.slate600, fontSize: 12),
-            ),
-            const SizedBox(height: 16),
-            _row('Basic Salary', _n(row, 'basic')),
-            _row('House Rent', _n(row, 'house_rent')),
-            _row('Medical Allowance', _n(row, 'medical_allowance')),
-            _row('Transport Allowance', _n(row, 'transport_allowance')),
-            _row('Other Allowance', _n(row, 'other_allowance')),
-            _row('Bonuses', _n(row, 'bonuses'), color: AppColors.success),
-            const Divider(height: 24),
-            _row('Gross Salary', _n(row, 'gross_salary'), bold: true, color: AppColors.success),
-            const SizedBox(height: 12),
-            _row('Tax', _n(row, 'tax'), color: AppColors.error),
-            _row('Social Security', _n(row, 'social_security'), color: AppColors.error),
-            _row('Other Deductions', _n(row, 'other_deductions'), color: AppColors.error),
-            _row('Penalties', _n(row, 'penalties'), color: AppColors.error),
-            _row('Total Deductions', _n(row, 'total_deductions'), bold: true, color: AppColors.error),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Net Pay', style: TextStyle(fontWeight: FontWeight.w700)),
-                  Text(_n(row, 'net_salary').toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.success)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _row(String label, num value, {bool bold = false, Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  void _openSlip(Map<String, dynamic> r) {
+    showMotionSheet<void>(context, (ctx) {
+      final p = MarketPalette.of(ctx);
+      Widget line(String label, dynamic v, {bool bold = false, Color? color}) => Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(12)),
+            child: Row(children: [
+              Expanded(child: Text(label, style: TextStyle(fontSize: 13, color: p.label, fontWeight: bold ? FontWeight.w700 : FontWeight.w500))),
+              Text(money(toDouble(v)), style: TextStyle(fontSize: 13.5, color: color ?? p.text, fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+            ]),
+          );
+      return FormSheet(
+        title: 'Payslip',
+        subtitle: _period(r),
         children: [
-          Text(label, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w500, fontSize: 12)),
-          Text(value.toStringAsFixed(0), style: TextStyle(fontWeight: bold ? FontWeight.w900 : FontWeight.w700, fontSize: 13, color: color)),
+          Row(children: [StatusPill(humanize('${r['status'] ?? ''}'), tone: toneForStatus('${r['status']}'))]),
+          const SizedBox(height: 12),
+          const SectionHeader('Earnings'),
+          line('Basic salary', r['basic']),
+          line('House rent', r['house_rent']),
+          line('Medical allowance', r['medical_allowance']),
+          line('Transport allowance', r['transport_allowance']),
+          line('Other allowance', r['other_allowance']),
+          line('Bonuses', r['bonuses'], color: p.ok),
+          line('Gross salary', r['gross_salary'], bold: true, color: p.ok),
+          const SizedBox(height: 8),
+          const SectionHeader('Deductions'),
+          line('Tax', r['tax'], color: p.error),
+          line('Social security', r['social_security'], color: p.error),
+          line('Other deductions', r['other_deductions'], color: p.error),
+          line('Penalties', r['penalties'], color: p.error),
+          line('Total deductions', r['total_deductions'], bold: true, color: p.error),
+          const SizedBox(height: 10),
+          GlowCard(
+            gradient: Accent.ocean.gradient,
+            child: Row(children: [
+              const Text('Net pay', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              CountUp(value: toDouble(r['net_salary']), format: (v) => money(v), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+            ]),
+          ),
+          const SizedBox(height: 12),
         ],
-      ),
-    );
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: AsyncStateView(
-        loading: _loading,
-        error: _error,
-        isEmpty: _rows.isEmpty,
-        emptyMessage: 'No payroll records yet.',
-        emptyIcon: Icons.account_balance_wallet_outlined,
-        onRetry: _load,
-        builder: (context) => ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: _rows.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final row = (_rows[index] as Map).cast<String, dynamic>();
-            final start = DateTime.tryParse((row['start_date'] ?? '').toString());
-            final end = DateTime.tryParse((row['end_date'] ?? '').toString());
-            final status = (row['status'] ?? '').toString();
-            return ListTile(
-              onTap: () => _openDetail(row),
-              title: Text(
-                '${start != null ? DateFormat('dd MMM yyyy').format(start) : '—'} → ${end != null ? DateFormat('dd MMM yyyy').format(end) : '—'}',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              ),
-              subtitle: Text('Gross ${_n(row, 'gross_salary').toStringAsFixed(0)} · Deductions ${_n(row, 'total_deductions').toStringAsFixed(0)}'),
-              trailing: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(_n(row, 'net_salary').toStringAsFixed(0), style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.success)),
-                  const SizedBox(height: 4),
-                  StatusChip(label: status, color: _payrollStatusColors[status] ?? AppColors.slate400),
-                ],
-              ),
-            );
-          },
+    final state = stateSliver();
+    if (state != null) return state;
+    if (_rows.isEmpty) return sliverEmpty(icon: Icons.account_balance_wallet_outlined, title: 'No payroll records yet');
+
+    final paid = _rows.where((r) => '${r['status']}'.toUpperCase() == 'PAID');
+    final totalNet = _rows.fold<double>(0, (a, r) => a + toDouble(r['net_salary']));
+    final last = _rows.first;
+    final recent = _rows.take(6).toList().reversed.toList();
+
+    return SliverMainAxisGroup(slivers: [
+      sliverStats([
+        MiniStat(icon: Icons.payments_rounded, label: 'Total net pay', value: totalNet, format: (v) => money(v), tone: MarketTone.ok),
+        MiniStat(icon: Icons.receipt_long_rounded, label: 'Last net pay', value: toDouble(last['net_salary']), format: (v) => money(v), tone: MarketTone.brand),
+        MiniStat(icon: Icons.task_alt_rounded, label: 'Paid periods', value: paid.length, tone: MarketTone.info),
+        MiniStat(icon: Icons.hourglass_top_rounded, label: 'Pending periods', value: _rows.where((r) => '${r['status']}'.toUpperCase() == 'PENDING').length, tone: MarketTone.warn),
+      ]),
+      sliverBox(ChartPanel(
+        title: 'Net pay trend',
+        subtitle: 'Last ${recent.length} pay periods',
+        icon: Icons.bar_chart_rounded,
+        accent: Accent.emerald,
+        height: 180,
+        child: GroupedBarChart(
+          categories: recent.map((r) {
+            final d = parseDate(r['start_date']);
+            return d == null ? '' : DateFormat('MMM yy').format(d.toLocal());
+          }).toList(),
+          series: [ChartSeries('Net pay', recent.map((r) => toDouble(r['net_salary'])).toList(), const Color(0xFF30914C))],
+          format: (v) => compactNum(v),
         ),
+      )),
+      sliverStagger(
+        count: _rows.length,
+        builder: (_, i) {
+          final r = _rows[i];
+          return MotionTile(
+            onTap: () => _openSlip(r),
+            leading: const AccentIcon(Icons.receipt_long_rounded, accent: Accent.emerald, size: 42),
+            title: _period(r),
+            subtitle: 'Gross ${money(toDouble(r['gross_salary']))} · Deductions ${money(toDouble(r['total_deductions']))}',
+            meta: 'Net ${money(toDouble(r['net_salary']))}',
+            trailing: StatusPill(humanize('${r['status'] ?? ''}'), tone: toneForStatus('${r['status']}')),
+          );
+        },
       ),
-    );
+    ]);
   }
 }

@@ -83,7 +83,7 @@ class _SessionGateState extends State<_SessionGate> {
     final loggedIn = _loggedIn;
     if (loggedIn == null) {
       final isDark = Theme.of(context).brightness == Brightness.dark;
-      return Scaffold(backgroundColor: isDark ? Colors.black : Colors.white);
+      return Scaffold(backgroundColor: isDark ? AppColors.pageDark : AppColors.pageLight);
     }
     return loggedIn ? const HomeShellPage() : const WelcomePage();
   }

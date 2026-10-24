@@ -1,92 +1,81 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import '../../../../core/network/http_client.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../../../shared/widgets/async_state_view.dart';
-import '../../data/employee_dashboard_service.dart';
+import '../../../../shared/ui/motion_kit.dart';
+import 'dash_common.dart';
 
-class AssetTab extends StatefulWidget {
-  final int employeeId;
-  const AssetTab({super.key, required this.employeeId});
+/// Ported from desktop tabs/AssetTab.tsx — assets issued to the employee,
+/// with an assigned / returned filter.
+class AssetTab extends DashSection {
+  const AssetTab({super.key, required super.employeeId, super.refreshToken});
 
   @override
   State<AssetTab> createState() => _AssetTabState();
 }
 
-class _AssetTabState extends State<AssetTab> {
-  final _service = EmployeeDashboardService(ApiClient());
-  bool _loading = true;
-  String? _error;
-  List<dynamic> _rows = [];
+class _AssetTabState extends State<AssetTab> with DashLoader<AssetTab> {
+  List<Map<String, dynamic>> _rows = [];
+  String _filter = 'all';
 
   @override
-  void initState() {
-    super.initState();
-    _load();
+  Future<void> fetch() async {
+    final rows = await service.getAssets(widget.employeeId);
+    if (mounted) setState(() => _rows = rows);
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final rows = await _service.getAssets(widget.employeeId);
-      if (!mounted) return;
-      setState(() => _rows = rows);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _error = 'Could not load assets.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
+  bool _active(Map<String, dynamic> r) => r['return_date'] == null;
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: AsyncStateView(
-        loading: _loading,
-        error: _error,
-        isEmpty: _rows.isEmpty,
-        emptyMessage: 'No assets assigned to you.',
-        emptyIcon: Icons.laptop_mac,
-        onRetry: _load,
-        builder: (context) => ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: _rows.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final row = (_rows[index] as Map).cast<String, dynamic>();
-            final asset = (row['asset'] as Map?)?.cast<String, dynamic>();
-            final assetGroup = (asset?['asset_group'] as Map?)?['name']?.toString();
-            final issuedDate = DateTime.tryParse((row['issued_date'] ?? '').toString());
-            final returnDate = DateTime.tryParse((row['return_date'] ?? '').toString());
-            final isActive = returnDate == null;
-            final remarks = (row['remarks'] ?? row['note'] ?? '').toString();
+    final state = stateSliver();
+    if (state != null) return state;
+    if (_rows.isEmpty) return sliverEmpty(icon: Icons.laptop_chromebook_rounded, title: 'No assets assigned to you');
 
-            return ListTile(
-              leading: CircleAvatar(
-                backgroundColor: AppColors.brand.withValues(alpha: 0.12),
-                child: const Icon(Icons.laptop_mac, color: AppColors.brand, size: 18),
-              ),
-              title: Text((asset?['name'] ?? '—').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-              subtitle: Text(
-                [
-                  assetGroup ?? 'Uncategorized',
-                  if (issuedDate != null) 'Issued ${DateFormat('dd MMM yyyy').format(issuedDate)}',
-                  if (returnDate != null) 'Returned ${DateFormat('dd MMM yyyy').format(returnDate)}',
-                  if (remarks.isNotEmpty) '"$remarks"',
-                ].join(' · '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: StatusChip(label: isActive ? 'Assigned' : 'Returned', color: isActive ? AppColors.success : AppColors.slate400),
+    final active = _rows.where(_active).length;
+    final list = _rows.where((r) => _filter == 'all' || (_filter == 'assigned') == _active(r)).toList();
+
+    return SliverMainAxisGroup(slivers: [
+      sliverStats([
+        MiniStat(icon: Icons.devices_rounded, label: 'Currently assigned', value: active, tone: MarketTone.ok),
+        MiniStat(icon: Icons.assignment_return_rounded, label: 'Returned', value: _rows.length - active, tone: MarketTone.neutral),
+      ]),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: ChipFilter<String>(
+            value: _filter,
+            onChanged: (v) => setState(() => _filter = v),
+            options: [
+              (id: 'all', label: 'All', count: _rows.length),
+              (id: 'assigned', label: 'Assigned', count: active),
+              (id: 'returned', label: 'Returned', count: _rows.length - active),
+            ],
+          ),
+        ),
+      ),
+      if (list.isEmpty)
+        sliverEmpty(icon: Icons.filter_alt_off_rounded, title: 'Nothing matches this filter')
+      else
+        sliverStagger(
+          count: list.length,
+          builder: (_, i) {
+            final r = list[i];
+            final asset = (r['asset'] as Map?) ?? const {};
+            final group = (asset['asset_group'] as Map?)?['name'];
+            final issued = parseDate(r['issued_date']);
+            final returned = parseDate(r['return_date']);
+            final note = '${r['remarks'] ?? r['note'] ?? ''}'.trim();
+            final meta = [
+              if (issued != null) 'Issued ${fmtDate(issued)}',
+              if (returned != null) 'Returned ${fmtDate(returned)}',
+            ].join(' · ');
+            return MotionTile(
+              leading: AccentIcon(Icons.laptop_mac_rounded, accent: _active(r) ? Accent.ocean : Accent.ocean, size: 42),
+              title: '${asset['name'] ?? '-'}',
+              subtitle: [group ?? 'Uncategorized', if (note.isNotEmpty) note].join('\n'),
+              meta: meta,
+              trailing: StatusPill(_active(r) ? 'Assigned' : 'Returned', tone: _active(r) ? MarketTone.ok : MarketTone.neutral),
             );
           },
         ),
-      ),
-    );
+    ]);
   }
 }

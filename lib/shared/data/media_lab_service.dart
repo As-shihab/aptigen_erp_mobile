@@ -13,7 +13,7 @@ import 'media_studio_service.dart';
 // Batch edit ("Lab") data layer — port of erp/desktop's lab/api.ts and
 // useBatchJob.ts. Custom /api routes (isV8 = false).
 
-const labMaxItems = 200;
+const labMaxItems = 10;
 const labJobPoll = Duration(seconds: 3);
 const labBatchProgressEvent = 'media:batch-edit:progress';
 

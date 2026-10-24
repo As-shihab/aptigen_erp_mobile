@@ -249,20 +249,6 @@ class _SalesHubPageState extends State<SalesHubPage> {
 
   // One accent per area so the list scans by colour — SAP-style accent set,
   // (light, dark) shades so icons stay readable in both themes.
-  static const _accents = <(Color, Color)>[
-    (Color(0xFF0A6ED1), Color(0xFF4DB1FF)), // blue
-    (Color(0xFF188918), Color(0xFF5DC122)), // green
-    (Color(0xFFD20A0A), Color(0xFFFF6A6A)), // red
-    (Color(0xFF0E7490), Color(0xFF38BDF8)), // teal
-    (Color(0xFFE76500), Color(0xFFFF8A3D)), // orange
-    (Color(0xFF7858FF), Color(0xFFA78BFA)), // violet
-    (Color(0xFF4F46E5), Color(0xFF818CF8)), // indigo
-    (Color(0xFFDF1278), Color(0xFFF472B6)), // pink
-    (Color(0xFF0891B2), Color(0xFF22D3EE)), // cyan
-    (Color(0xFFB45309), Color(0xFFFBBF24)), // amber
-    (Color(0xFF4D7C0F), Color(0xFFA3E635)), // olive
-    (Color(0xFF5B738B), Color(0xFFA9B4BE)), // grey
-  ];
 
   Widget _areas(MarketPalette p) {
     final areas = <(IconData, String, String, Widget Function())>[
@@ -286,16 +272,7 @@ class _SalesHubPageState extends State<SalesHubPage> {
           if (i > 0) Divider(height: 1, indent: 62, color: p.line),
           ListTile(
             onTap: () => _open(areas[i].$4()),
-            leading: Builder(builder: (_) {
-              final (light, dark) = _accents[i % _accents.length];
-              final fg = p.dark ? dark : light;
-              return Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(color: fg.withValues(alpha: p.dark ? 0.18 : 0.12), borderRadius: BorderRadius.circular(9)),
-                child: Icon(areas[i].$1, size: 19, color: fg),
-              );
-            }),
+            leading: AccentListIcon(areas[i].$1, index: i),
             title: Text(areas[i].$2, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.text)),
             subtitle: Text(areas[i].$3, style: TextStyle(fontSize: 12, color: p.label)),
             trailing: Icon(Icons.chevron_right, color: p.label),

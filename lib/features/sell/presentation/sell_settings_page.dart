@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/network/http_client.dart';
 import '../../store/data/store_util.dart' show toIntOrNull;
+import '../data/pos_local_prefs.dart';
 import '../data/sell_settings_service.dart';
 import 'widgets/sell_ui.dart';
 
@@ -25,10 +26,21 @@ class _SellSettingsPageState extends State<SellSettingsPage> {
   /// Last loaded values — only used to show the "unsaved changes" hint.
   SellFeatureToggles _saved = const SellFeatureToggles();
 
+  /// Device-only (saved immediately, not part of the workplace settings).
+  bool _autoPrintReceipt = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+    PosLocalPrefs.getAutoPrintReceipt().then((v) {
+      if (mounted) setState(() => _autoPrintReceipt = v);
+    });
+  }
+
+  Future<void> _setAutoPrint(bool v) async {
+    setState(() => _autoPrintReceipt = v);
+    await PosLocalPrefs.setAutoPrintReceipt(v);
   }
 
   Future<void> _load() async {
@@ -128,6 +140,24 @@ class _SellSettingsPageState extends State<SellSettingsPage> {
                         subtitle: 'Let staff apply discounts on sales and at POS checkout.',
                         value: _toggles.hasDiscounts,
                         onChanged: (v) => setState(() => _toggles = _toggles.copyWith(hasDiscounts: v)),
+                      ),
+                    ],
+                  ),
+                ),
+                FadeSlideIn(
+                  index: 1,
+                  child: _section(
+                    p,
+                    title: 'Receipt',
+                    subtitle: 'This device only',
+                    rows: [
+                      _toggleRow(
+                        p,
+                        icon: Icons.print_outlined,
+                        title: 'Auto print receipt after sale',
+                        subtitle: 'Sends the receipt to the default Bluetooth printer when a sale completes.',
+                        value: _autoPrintReceipt,
+                        onChanged: _setAutoPrint,
                       ),
                     ],
                   ),

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/config/app_config.dart';
+import '../../../shared/ui/motion_kit.dart';
 import '../../auth/data/auth_service.dart';
 import '../../auth/models/user_model.dart';
 import 'billing_page.dart';
@@ -28,6 +29,8 @@ class _ProfilePageState extends State<ProfilePage> {
   UserModel? _user;
   String? _avatarUrl;
   bool _loading = true;
+  List<Map<String, dynamic>> _workplaces = const [];
+  bool _workplacesLoading = true;
 
   @override
   void initState() {
@@ -43,6 +46,22 @@ class _ProfilePageState extends State<ProfilePage> {
       _loading = false;
     });
     if (user != null) _loadAvatar(user.id);
+    _loadWorkplaces();
+  }
+
+  // Every workplace this user owns or was added to, with relation and
+  // edit permission (cloud's WorkplaceController.getMyWorkplaces).
+  Future<void> _loadWorkplaces() async {
+    try {
+      final rows = await _authService.fetchMyWorkplaces();
+      if (!mounted) return;
+      setState(() => _workplaces = rows);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _workplaces = const []);
+    } finally {
+      if (mounted) setState(() => _workplacesLoading = false);
+    }
   }
 
   // Same source as erp/desktop's header avatar (AppHeaderBar.tsx): the
@@ -84,9 +103,14 @@ class _ProfilePageState extends State<ProfilePage> {
     Navigator.of(context).pushNamedAndRemoveUntil('/welcome', (route) => false);
   }
 
-  Future<void> _openWorkplace() async {
-    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const EditWorkplacePage()));
-    if (saved == true) _load();
+  // Editable workplaces open the editor; others open a read-only view.
+  Future<void> _openWorkplace(Map<String, dynamic> workplace) async {
+    if (workplace['can_edit'] == true) {
+      final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => EditWorkplacePage(workplace: workplace)));
+      if (saved == true) _load();
+    } else {
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => WorkplaceDetailsPage(workplace: workplace)));
+    }
   }
 
   void _openBilling() {
@@ -111,7 +135,7 @@ class _ProfilePageState extends State<ProfilePage> {
     }
 
     return Container(
-      color: isDark ? AppColors.slate900 : AppColors.slate50,
+      color: isDark ? AppColors.pageDark : AppColors.pageLight,
       child: SingleChildScrollView(
         child: Column(
           children: [
@@ -121,11 +145,16 @@ class _ProfilePageState extends State<ProfilePage> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
+                  _WorkplacesSection(
+                    workplaces: _workplaces,
+                    loading: _workplacesLoading,
+                    onOpen: _openWorkplace,
+                  ),
+                  const SizedBox(height: 16),
                   _SettingsSection(
                     title: 'Account',
                     isDark: isDark,
                     items: [
-                      _SettingItem(Icons.apartment_outlined, 'Workplace', _openWorkplace),
                       _SettingItem(Icons.credit_card_outlined, 'Billing', _openBilling),
                       _SettingItem(Icons.receipt_long_outlined, 'Invoices', _openInvoices),
                       _SettingItem(Icons.verified_user_outlined, 'Verify seller', _openSellerVerification),
@@ -240,6 +269,101 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
+/// Every workplace the user belongs to — Owner/Member pill, current
+/// marker, owner + location + currency, and an edit or lock affordance.
+class _WorkplacesSection extends StatelessWidget {
+  final List<Map<String, dynamic>> workplaces;
+  final bool loading;
+  final ValueChanged<Map<String, dynamic>> onOpen;
+
+  const _WorkplacesSection({required this.workplaces, required this.loading, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = MarketPalette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10, left: 4),
+          child: Row(children: [
+            Expanded(
+              child: Text('Workplaces', style: GoogleFonts.poppins(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate600)),
+            ),
+            if (!loading) StatusPill('${workplaces.length}'),
+          ]),
+        ),
+        if (loading)
+          const Column(children: [SkeletonBox(height: 68, radius: 12), SizedBox(height: 8), SkeletonBox(height: 68, radius: 12)])
+        else if (workplaces.isEmpty)
+          MarketCard(child: Text("You don't belong to any workplace yet.", style: TextStyle(fontSize: 13, color: p.label)))
+        else
+          ...workplaces.asMap().entries.map((entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: FadeSlideIn(index: entry.key, child: _WorkplaceRow(workplace: entry.value, onTap: () => onOpen(entry.value))),
+              )),
+      ],
+    );
+  }
+}
+
+class _WorkplaceRow extends StatelessWidget {
+  final Map<String, dynamic> workplace;
+  final VoidCallback onTap;
+  const _WorkplaceRow({required this.workplace, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = MarketPalette.of(context);
+    final name = (workplace['name'] ?? '').toString();
+    final code = (workplace['code'] ?? '').toString().trim();
+    final isOwner = workplace['relation'] == 'owner';
+    final isCurrent = workplace['is_current'] == true;
+    final canEdit = workplace['can_edit'] == true;
+    final owner = workplace['owner'] as Map?;
+    final ownerName = (owner?['name'] ?? owner?['email'] ?? '').toString().trim();
+    final meta = [
+      if (ownerName.isNotEmpty) 'Owner: $ownerName',
+      (workplace['location'] ?? '').toString().trim(),
+      (workplace['currency'] ?? '').toString().trim(),
+    ].where((s) => s.isNotEmpty).join(' · ');
+
+    return MarketCard(
+      onTap: onTap,
+      color: isCurrent ? p.brandSoft : null,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(children: [
+        InitialsAvatar(name, size: 42),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(
+                child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: p.text)),
+              ),
+              if (code.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text('#$code', style: TextStyle(fontSize: 11, color: p.label)),
+              ],
+            ]),
+            const SizedBox(height: 5),
+            Wrap(spacing: 6, runSpacing: 4, children: [
+              StatusPill(isOwner ? 'Owner' : 'Member', tone: isOwner ? MarketTone.info : MarketTone.neutral, icon: isOwner ? Icons.workspace_premium_outlined : null),
+              if (isCurrent) const StatusPill('Current', tone: MarketTone.ok, icon: Icons.check_circle_outline),
+            ]),
+            if (meta.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: p.label)),
+            ],
+          ]),
+        ),
+        const SizedBox(width: 8),
+        Icon(canEdit ? Icons.edit_outlined : Icons.lock_outline, size: 18, color: canEdit ? p.brand : p.label),
+      ]),
+    );
+  }
+}
+
 class _SettingsSection extends StatelessWidget {
   final String title;
   final bool isDark;
@@ -270,7 +394,7 @@ class _SettingsSection extends StatelessWidget {
               final isLast = entry.key == items.length - 1;
               return Column(
                 children: [
-                  _SettingRow(item: entry.value, isDark: isDark),
+                  _SettingRow(item: entry.value, isDark: isDark, index: entry.key),
                   if (!isLast) Divider(height: 1, indent: 54, color: AppColors.slate400.withValues(alpha: 0.2)),
                 ],
               );
@@ -292,7 +416,8 @@ class _SettingItem {
 class _SettingRow extends StatelessWidget {
   final _SettingItem item;
   final bool isDark;
-  const _SettingRow({required this.item, required this.isDark});
+  final int index;
+  const _SettingRow({required this.item, required this.isDark, this.index = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -305,12 +430,7 @@ class _SettingRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(color: AppColors.brand.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                child: Icon(item.icon, color: AppColors.brand, size: 18),
-              ),
+              AccentListIcon(item.icon, index: index, size: 34),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(

@@ -6,11 +6,13 @@ import '../../../sell/data/pos_printer_service.dart';
 import '../../../sell/market/presentation/banners/form_kit.dart' show FieldBlock, SheetHeader, SwitchRow, marketInput;
 import '../../data/barcode_label_bytes.dart';
 import '../../data/barcode_print_prefs.dart';
+import '../barcode_lab/barcode_lab_page.dart';
 import 'store_ui.dart';
 
 /// "Print barcode" bottom sheet — live CODE128 preview + copies stepper,
 /// sends the label to the workplace's default `PrinterDevice` on print.
-/// Shared by the Packaging list's per-row print action and the Barcode Lab.
+/// Used by the Packaging list's per-row print action; "Open in barcode lab"
+/// hands the code over to the full label designer.
 ///
 /// [infoLines] is label->value extra info (price, product name, qty, ...) —
 /// each entry gets its own on/off switch so what actually prints on the
@@ -106,6 +108,23 @@ class _BarcodePrintSheetState extends State<_BarcodePrintSheet> {
     _labelHeightMm = value;
     BarcodePrintPrefs.setLabelHeightMm(value);
     setState(() {});
+  }
+
+  /// Hands this code (and its info lines) to the Barcode lab designer.
+  void _openInLab() {
+    final fields = <String, String>{};
+    final name = widget.infoLines['Product'] ?? widget.title;
+    if ((name ?? '').isNotEmpty) fields['name'] = name!;
+    final price = widget.infoLines['Price'];
+    if (price != null) {
+      final numeric = RegExp(r'[0-9][0-9,]*(\.[0-9]+)?').firstMatch(price)?.group(0)?.replaceAll(',', '');
+      fields['price'] = numeric ?? price;
+    }
+    final qty = widget.infoLines['Qty'];
+    if ((qty ?? '').isNotEmpty) fields['unit'] = qty!;
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    navigator.push(marketRoute<void>(BarcodeLabPage(initialCode: widget.code, initialFields: fields)));
   }
 
   void _fitToLabel() => _setBarHeight(BarcodePrintPrefs.suggestBarHeight(_labelHeightMm));
@@ -307,7 +326,23 @@ class _BarcodePrintSheetState extends State<_BarcodePrintSheet> {
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
             child: SafeArea(
               top: false,
-              child: SizedBox(
+              child: Row(children: [
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: p.brand,
+                      side: BorderSide(color: p.line),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _printing ? null : _openInLab,
+                    icon: const Icon(Icons.design_services_outlined, size: 18),
+                    label: const Text('Open in barcode lab'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
                 height: 48,
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
@@ -318,6 +353,8 @@ class _BarcodePrintSheetState extends State<_BarcodePrintSheet> {
                   label: Text(_printing ? 'Printing…' : (_copies > 1 ? 'Print $_copies labels' : 'Print')),
                 ),
               ),
+                ),
+              ]),
             ),
           ),
         ],

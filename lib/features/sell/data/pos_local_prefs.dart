@@ -18,4 +18,19 @@ class PosLocalPrefs {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showReceiptKey, value);
   }
+
+  /// Whether a completed sale's receipt is sent to the default Bluetooth
+  /// printer automatically — kept separately for the sales and pharma
+  /// registers, off by default.
+  static String _autoPrintKey(bool isPharma) => isPharma ? 'pharma_auto_print_receipt' : 'pos_auto_print_receipt';
+
+  static Future<bool> getAutoPrintReceipt({bool isPharma = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoPrintKey(isPharma)) ?? false;
+  }
+
+  static Future<void> setAutoPrintReceipt(bool value, {bool isPharma = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoPrintKey(isPharma), value);
+  }
 }

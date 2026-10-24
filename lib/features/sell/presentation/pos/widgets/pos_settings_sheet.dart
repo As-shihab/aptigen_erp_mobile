@@ -13,17 +13,18 @@ import '../../../data/pos_printer_service.dart';
 /// POS register settings — mirrors desktop's "POS Settings" dialog
 /// (PosTerminal.tsx). Returns the saved `OrderSettings` on save, or null if
 /// dismissed without saving.
-Future<OrderSettings?> showPosSettingsSheet(BuildContext context, {required OrderSettings settings, required List<Map<String, dynamic>> warehouses}) {
+Future<OrderSettings?> showPosSettingsSheet(BuildContext context, {required OrderSettings settings, required List<Map<String, dynamic>> warehouses, bool isPharma = false}) {
   return showMarketSheet<OrderSettings>(
     context,
-    builder: (_) => _PosSettingsSheet(settings: settings, warehouses: warehouses),
+    builder: (_) => _PosSettingsSheet(settings: settings, warehouses: warehouses, isPharma: isPharma),
   );
 }
 
 class _PosSettingsSheet extends StatefulWidget {
   final OrderSettings settings;
   final List<Map<String, dynamic>> warehouses;
-  const _PosSettingsSheet({required this.settings, required this.warehouses});
+  final bool isPharma;
+  const _PosSettingsSheet({required this.settings, required this.warehouses, this.isPharma = false});
 
   @override
   State<_PosSettingsSheet> createState() => _PosSettingsSheetState();
@@ -39,6 +40,7 @@ class _PosSettingsSheetState extends State<_PosSettingsSheet> {
   bool _saving = false;
   bool _showReceiptLoading = true;
   bool _showReceiptAfterCheckout = true;
+  bool _autoPrintReceipt = false;
 
   bool _printerLoading = true;
   PrinterDevice? _defaultPrinter;
@@ -53,9 +55,11 @@ class _PosSettingsSheetState extends State<_PosSettingsSheet> {
 
   Future<void> _loadLocalPrefs() async {
     final value = await PosLocalPrefs.getShowReceiptAfterCheckout();
+    final autoPrint = await PosLocalPrefs.getAutoPrintReceipt(isPharma: widget.isPharma);
     if (!mounted) return;
     setState(() {
       _showReceiptAfterCheckout = value;
+      _autoPrintReceipt = autoPrint;
       _showReceiptLoading = false;
     });
   }
@@ -125,6 +129,7 @@ class _PosSettingsSheetState extends State<_PosSettingsSheet> {
       // `order_settings` row — same distinction as desktop's sound-mute
       // toggle, which also stays in localStorage rather than the server.
       await PosLocalPrefs.setShowReceiptAfterCheckout(_showReceiptAfterCheckout);
+      await PosLocalPrefs.setAutoPrintReceipt(_autoPrintReceipt, isPharma: widget.isPharma);
       if (!mounted) return;
       Navigator.of(context).pop(updated);
     } catch (_) {
@@ -205,6 +210,18 @@ class _PosSettingsSheetState extends State<_PosSettingsSheet> {
                     subtitle: Text('This device only — off skips straight back to the terminal after a sale.', style: TextStyle(fontSize: 11.5, color: p.label)),
                     value: _showReceiptAfterCheckout,
                     onChanged: (v) => setState(() => _showReceiptAfterCheckout = v),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(12)),
+                  child: SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    title: Text('Auto print receipt after sale', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: p.text)),
+                    subtitle: Text('Sends the receipt to the default Bluetooth printer when a sale completes.', style: TextStyle(fontSize: 11.5, color: p.label)),
+                    value: _autoPrintReceipt,
+                    onChanged: (v) => setState(() => _autoPrintReceipt = v),
                   ),
                 ),
               ],

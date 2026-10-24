@@ -1,149 +1,139 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../../core/network/http_client.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../../../shared/widgets/async_state_view.dart';
+import '../../../../shared/ui/motion_kit.dart';
 import '../../data/employee_dashboard_service.dart';
+import 'dash_common.dart';
 
 String _readKey(int employeeId, int noticeId) => 'notice_read_${employeeId}_$noticeId';
 
-class NoticeTab extends StatefulWidget {
-  final int employeeId;
+/// Ported from desktop tabs/NoticeTab.tsx — notices targeted at everyone,
+/// the employee's department or the employee. Read state is per device,
+/// like desktop's localStorage flag.
+class NoticeTab extends DashSection {
   final int? departmentId;
-  const NoticeTab({super.key, required this.employeeId, this.departmentId});
+
+  /// Called with the unread count after each load / acknowledgement.
+  final ValueChanged<int>? onUnreadChanged;
+  const NoticeTab({super.key, required super.employeeId, this.departmentId, super.refreshToken, this.onUnreadChanged});
 
   @override
   State<NoticeTab> createState() => _NoticeTabState();
 }
 
-class _NoticeTabState extends State<NoticeTab> {
-  final _service = EmployeeDashboardService(ApiClient());
-  bool _loading = true;
-  String? _error;
-  List<dynamic> _notices = [];
-  Set<int> _readIds = {};
+class _NoticeTabState extends State<NoticeTab> with DashLoader<NoticeTab> {
+  List<Map<String, dynamic>> _notices = [];
+  Set<int> _read = {};
+  String _filter = 'all';
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final notices = await _service.getNotices(employeeId: widget.employeeId, departmentId: widget.departmentId);
-      final prefs = await SharedPreferences.getInstance();
-      final readIds = <int>{};
-      for (final raw in notices) {
-        final id = int.tryParse(((raw as Map)['id'] ?? '').toString()) ?? 0;
-        if (id != 0 && prefs.getBool(_readKey(widget.employeeId, id)) == true) readIds.add(id);
-      }
-      if (!mounted) return;
-      setState(() {
-        _notices = notices;
-        _readIds = readIds;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _error = 'Could not load notices.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _acknowledge(int id) async {
+  Future<void> fetch() async {
+    final notices = await service.getNotices(employeeId: widget.employeeId, departmentId: widget.departmentId);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_readKey(widget.employeeId, id), true);
+    final read = <int>{
+      for (final n in notices)
+        if (prefs.getBool(_readKey(widget.employeeId, asInt(n['id']))) == true) asInt(n['id']),
+    };
     if (!mounted) return;
-    setState(() => _readIds = {..._readIds, id});
+    setState(() {
+      _notices = notices;
+      _read = read;
+    });
+    _report();
   }
 
-  void _openDetail(Map<String, dynamic> notice, int id) {
-    final createdAt = DateTime.tryParse((notice['created_at'] ?? '').toString());
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text((notice['title'] ?? '').toString(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 4),
-            if (createdAt != null)
-              Text(DateFormat('dd MMM yyyy, HH:mm').format(createdAt), style: TextStyle(color: AppColors.slate400, fontSize: 11)),
-            const SizedBox(height: 12),
-            Text((notice['content'] ?? '').toString(), style: const TextStyle(height: 1.5)),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(onPressed: () => Navigator.of(sheetContext).pop(), child: const Text('Close')),
-                if (!_readIds.contains(id))
-                  FilledButton(
-                    onPressed: () {
-                      _acknowledge(id);
-                      Navigator.of(sheetContext).pop();
-                    },
-                    child: const Text('Got it'),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+  void _report() => widget.onUnreadChanged?.call(_notices.where((n) => !_read.contains(asInt(n['id']))).length);
+
+  Future<void> _ack(Iterable<int> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final id in ids) {
+      await prefs.setBool(_readKey(widget.employeeId, id), true);
+    }
+    if (!mounted) return;
+    setState(() => _read = {..._read, ...ids});
+    _report();
+  }
+
+  Future<void> _open(Map<String, dynamic> n) async {
+    final id = asInt(n['id']);
+    final read = _read.contains(id);
+    final ok = await showMotionSheet<bool>(context, (ctx) {
+      final p = MarketPalette.of(ctx);
+      return FormSheet(
+        title: '${n['title'] ?? 'Notice'}',
+        subtitle: fmtDateTime(parseDate(n['created_at'])),
+        submitLabel: 'Got it',
+        onSubmit: read ? null : () => Navigator.pop(ctx, true),
+        children: [
+          Text('${n['content'] ?? ''}', style: TextStyle(fontSize: 14, height: 1.6, color: p.text)),
+          const SizedBox(height: 8),
+        ],
+      );
+    });
+    if (ok == true) _ack([id]);
   }
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: AsyncStateView(
-        loading: _loading,
-        error: _error,
-        isEmpty: _notices.isEmpty,
-        emptyMessage: 'No notices for you right now.',
-        emptyIcon: Icons.notifications_none,
-        onRetry: _load,
-        builder: (context) => ListView.separated(
-          padding: const EdgeInsets.all(12),
-          itemCount: _notices.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final n = (_notices[index] as Map).cast<String, dynamic>();
-            final id = int.tryParse((n['id'] ?? '').toString()) ?? 0;
-            final read = _readIds.contains(id);
-            final createdAt = DateTime.tryParse((n['created_at'] ?? '').toString());
-            return ListTile(
-              onTap: () => _openDetail(n, id),
-              leading: Icon(read ? Icons.notifications_none : Icons.notifications_active, color: read ? AppColors.slate400 : AppColors.brand),
-              title: Row(
-                children: [
-                  Flexible(child: Text((n['title'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
-                  if (!read) ...[
-                    const SizedBox(width: 6),
-                    const StatusChip(label: 'NEW', color: AppColors.brand),
-                  ],
+    final state = stateSliver();
+    if (state != null) return state;
+    if (_notices.isEmpty) return sliverEmpty(icon: Icons.notifications_none_rounded, title: 'No notices for you right now');
+
+    final unread = _notices.where((n) => !_read.contains(asInt(n['id']))).toList();
+    final list = _filter == 'unread' ? unread : _notices;
+
+    return SliverMainAxisGroup(slivers: [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: Row(children: [
+            Expanded(
+              child: ChipFilter<String>(
+                value: _filter,
+                onChanged: (v) => setState(() => _filter = v),
+                options: [
+                  (id: 'all', label: 'All', count: _notices.length),
+                  (id: 'unread', label: 'Unread', count: unread.length),
                 ],
               ),
-              subtitle: Text(
-                '${(n['content'] ?? '').toString()}\n${createdAt != null ? DateFormat('dd MMM yyyy').format(createdAt) : ''}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+            ),
+            if (unread.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: TextButton.icon(
+                  onPressed: () => _ack(unread.map((n) => asInt(n['id']))),
+                  icon: const Icon(Icons.done_all_rounded, size: 18),
+                  label: const Text('Mark all read'),
+                ),
               ),
-              isThreeLine: true,
+          ]),
+        ),
+      ),
+      if (list.isEmpty)
+        sliverEmpty(icon: Icons.mark_email_read_outlined, title: "You're all caught up")
+      else
+        sliverStagger(
+          count: list.length,
+          builder: (_, i) {
+            final n = list[i];
+            final isRead = _read.contains(asInt(n['id']));
+            return MotionTile(
+              onTap: () => _open(n),
+              leading: AccentIcon(isRead ? Icons.notifications_none_rounded : Icons.notifications_active_rounded,
+                  accent: isRead ? Accent.ocean : Accent.ocean, size: 42),
+              title: '${n['title'] ?? ''}',
+              subtitle: '${n['content'] ?? ''}',
+              meta: fmtDate(parseDate(n['created_at'])),
+              trailing: isRead ? null : const StatusPill('New', tone: MarketTone.brand),
             );
           },
         ),
-      ),
-    );
+    ]);
   }
+}
+
+/// Unread notice count for the dashboard badge (same per-device read flags).
+Future<int> countUnreadNotices(EmployeeDashboardService service, {required int employeeId, int? departmentId}) async {
+  final notices = await service.getNotices(employeeId: employeeId, departmentId: departmentId);
+  final prefs = await SharedPreferences.getInstance();
+  return notices.where((n) => prefs.getBool(_readKey(employeeId, asInt(n['id']))) != true).length;
 }

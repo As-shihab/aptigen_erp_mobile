@@ -1,5 +1,6 @@
 import '../../../core/network/http_client.dart';
 import '../models/notification_model.dart';
+import 'module_unread_counts.dart';
 
 class NotificationsResult {
   final List<AppNotification> rows;
@@ -30,9 +31,17 @@ class NotificationsService {
     return NotificationsResult(rows: rows, unreadCount: unreadCount);
   }
 
-  Future<void> markRead(int id) => _client.post('notifications/$id/read', {}, isV8: false);
+  // Both refetch the home launcher's per-module badges on success (every
+  // caller — notifications page, settings list — goes through here).
+  Future<void> markRead(int id) async {
+    await _client.post('notifications/$id/read', {}, isV8: false);
+    ModuleUnreadCounts.refresh();
+  }
 
-  Future<void> markAllRead() => _client.post('notifications/read-all', {}, isV8: false);
+  Future<void> markAllRead() async {
+    await _client.post('notifications/read-all', {}, isV8: false);
+    ModuleUnreadCounts.refresh();
+  }
 }
 
 int _toInt(dynamic value) => int.tryParse(value?.toString() ?? '') ?? 0;

@@ -35,6 +35,8 @@ const Map<String, IconData> _moduleIcons = {
 /// Ported from erp/desktop's launchpadModules.ts (buildLaunchpadModules).
 class LaunchpadModule {
   final String id;
+  /// Numeric `modules.id` — matches `notifications.module_id` (unread badges).
+  final int moduleId;
   final String label;
   final IconData icon;
   final Color color;
@@ -42,6 +44,7 @@ class LaunchpadModule {
 
   const LaunchpadModule({
     required this.id,
+    this.moduleId = 0,
     required this.label,
     required this.icon,
     required this.color,
@@ -89,6 +92,7 @@ List<LaunchpadModule> buildLaunchpadModules(List<dynamic> installedRows, Set<int
 
     mapped.add(LaunchpadModule(
       id: code,
+      moduleId: moduleId,
       label: (moduleRow['name'] ?? code).toString().trim(),
       icon: _moduleIcons[code] ?? Icons.apps,
       color: _parseColor((moduleRow['color'] ?? '').toString()),

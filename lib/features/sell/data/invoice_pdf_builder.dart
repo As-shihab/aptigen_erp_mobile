@@ -8,7 +8,7 @@ import 'sales_order_model.dart';
 /// desktop's `PosReceipt.tsx` `buildReceiptHtml()`/`printReceipt()`, just
 /// handed to the platform's native print dialog (via `package:printing`)
 /// instead of desktop's Electron silent-print/browser-print split. Same
-/// field set: workplace name, `POS-000123` invoice number, itemized lines,
+/// field set: workplace name, `SO-000123` sales order number, itemized lines,
 /// totals, payments, receipt-footer text. Amounts use `formatMoneyAscii()`
 /// (see core/utils/currency.dart) rather than `formatMoney()` — the default
 /// PDF font has no bundled Unicode glyphs for non-Latin currency signs.
@@ -27,7 +27,7 @@ Future<Uint8List> buildInvoicePdf(SalesOrder sale, {required String workplaceNam
           children: [
             pw.Center(child: pw.Text(workplaceName, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12))),
             pw.SizedBox(height: 2),
-            pw.Center(child: pw.Text(sale.invoiceNo, style: const pw.TextStyle(fontSize: 9))),
+            pw.Center(child: pw.Text('Sales order ${sale.invoiceNo}', style: const pw.TextStyle(fontSize: 9))),
             if (sale.status != 'COMPLETED')
               pw.Center(child: pw.Text('*** ${sale.status} ***', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
             pw.Center(child: pw.Text(_formatDate(sale.completedAt ?? sale.createdAt), style: const pw.TextStyle(fontSize: 8))),

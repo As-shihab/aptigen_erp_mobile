@@ -237,8 +237,10 @@ class _StoreHomePageState extends State<StoreHomePage> {
       ]),
     ];
 
+    var offset = 0;
+    final offsets = [for (final (_, areas) in sections) (offset += areas.length) - areas.length];
     return [
-      for (final (title, areas) in sections)
+      for (final (s, (title, areas)) in sections.indexed)
         if (areas.isNotEmpty) ...[
           SectionHeader(title),
           MarketCard(
@@ -248,12 +250,7 @@ class _StoreHomePageState extends State<StoreHomePage> {
                 if (i > 0) Divider(height: 1, indent: 62, color: p.line),
                 ListTile(
                   onTap: areas[i].$4,
-                  leading: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(color: p.brandSoft, borderRadius: BorderRadius.circular(9)),
-                    child: Icon(areas[i].$1, size: 19, color: p.brand),
-                  ),
+                  leading: AccentListIcon(areas[i].$1, index: offsets[s] + i),
                   title: Text(areas[i].$2, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.text)),
                   subtitle: areas[i].$3 == null ? null : Text(areas[i].$3!, style: TextStyle(fontSize: 12, color: p.label)),
                   trailing: Icon(Icons.chevron_right, color: p.label),

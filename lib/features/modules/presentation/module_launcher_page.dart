@@ -3,11 +3,13 @@ import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../accounting/presentation/accounting_home_page.dart';
 import '../../chat/presentation/chat_hub_page.dart';
-import '../../hr/presentation/employee_dashboard_page.dart';
-import '../../hr/presentation/hr_analytics_page.dart';
+import '../../../shared/ui/motion_kit.dart' show motionRoute;
+import '../../hr/presentation/hr_hub_page.dart';
+import '../../purchase/presentation/purchase_hub_page.dart';
 import '../../jobs/presentation/jobs_list_page.dart';
 import '../../market/presentation/market_page.dart';
 import '../../note/presentation/note_page.dart';
+import '../../notifications/data/module_unread_counts.dart';
 import '../../profile/presentation/profile_page.dart';
 import '../../sell/presentation/pos/pos_terminal_page.dart';
 import '../../sell/presentation/sales_hub_page.dart';
@@ -34,6 +36,8 @@ class _HomeTabState extends State<HomeTab> {
   @override
   void initState() {
     super.initState();
+    // Fresh shell (login / workplace switch) — drop any previous scope's counts.
+    ModuleUnreadCounts.clear();
     _load();
   }
 
@@ -42,6 +46,9 @@ class _HomeTabState extends State<HomeTab> {
       _loading = true;
       _error = null;
     });
+    // Badges load alongside, independently — a failing/missing route just
+    // means no badges, never a grid error.
+    final badges = ModuleUnreadCounts.refresh();
     try {
       final results = await Future.wait([
         _moduleService.loadInstalledModules(),
@@ -59,6 +66,7 @@ class _HomeTabState extends State<HomeTab> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+    await badges;
   }
 
   void _openModule(LaunchpadModule module) {
@@ -112,6 +120,10 @@ class _HomeTabState extends State<HomeTab> {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PosTerminalPage(isPharma: true)));
       return;
     }
+    if (module.id == 'purchase') {
+      Navigator.of(context).push(motionRoute(const PurchaseHubPage()));
+      return;
+    }
     if (module.id == 'accounting') {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountingHomePage()));
       return;
@@ -134,35 +146,7 @@ class _HomeTabState extends State<HomeTab> {
       return;
     }
 
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.badge, color: AppColors.brand),
-              title: const Text('Employee Dashboard'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EmployeeDashboardPage()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.insights, color: AppColors.brand),
-              title: const Text('Analytics'),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HrAnalyticsPage()));
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+    Navigator.of(context).push(motionRoute(const HrHubPage()));
   }
 
   @override
@@ -225,10 +209,28 @@ class _HomeTabState extends State<HomeTab> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: module.color.withValues(alpha: 0.15),
-                  child: Icon(module.icon, color: module.color),
+                SizedBox(
+                  // Room for the badge pill overhanging the icon circle's
+                  // top-right corner without clipping.
+                  width: 64,
+                  height: 50,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: module.color.withValues(alpha: 0.15),
+                        child: Icon(module.icon, color: module.color),
+                      ),
+                      if (module.moduleId > 0)
+                        Positioned(
+                          top: 0,
+                          left: 38,
+                          child: _ModuleUnreadBadge(moduleId: module.moduleId),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Padding(
@@ -244,6 +246,49 @@ class _HomeTabState extends State<HomeTab> {
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+/// SAP-style unread pill on a launcher tile — error colour, white text,
+/// "99+" cap, pops in (scale) when it appears or the count changes, hidden
+/// at 0. Listens to [ModuleUnreadCounts.counts] directly so a socket bump
+/// only rebuilds the affected badges, not the grid.
+class _ModuleUnreadBadge extends StatelessWidget {
+  final int moduleId;
+  const _ModuleUnreadBadge({required this.moduleId});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Map<int, int>>(
+      valueListenable: ModuleUnreadCounts.counts,
+      builder: (context, counts, _) {
+        final count = counts[moduleId] ?? 0;
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          switchInCurve: Curves.easeOutBack,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+          child: count <= 0
+              ? const SizedBox.shrink(key: ValueKey(0))
+              : Container(
+                  key: ValueKey(count),
+                  constraints: const BoxConstraints(minWidth: 18),
+                  height: 18,
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.error,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: Theme.of(context).cardColor, width: 1.5),
+                  ),
+                  child: Text(
+                    formatBadgeCount(count),
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, height: 1.1),
+                  ),
+                ),
         );
       },
     );

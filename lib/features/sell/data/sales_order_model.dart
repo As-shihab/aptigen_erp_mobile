@@ -105,11 +105,9 @@ class SalesOrder {
   /// uses for this sale in lists/detail views.
   String get displayNo => 'SO-${id.toString().padLeft(6, '0')}';
 
-  /// `POS-000123` — the same row, but the prefix desktop's PosReceipt.tsx
-  /// uses specifically on the receipt/invoice itself (same id, different
-  /// display convention per context — not a mobile inconsistency, mirrors
-  /// desktop exactly).
-  String get invoiceNo => 'POS-${id.toString().padLeft(6, '0')}';
+  /// Receipt / invoice number — the same `SO-000123` as [displayNo], as
+  /// desktop's PosReceipt.tsx prints it.
+  String get invoiceNo => displayNo;
 
   factory SalesOrder.fromJson(Map json) {
     final client = json['client'] as Map?;

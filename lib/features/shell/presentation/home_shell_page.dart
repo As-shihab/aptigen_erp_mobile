@@ -7,6 +7,7 @@ import '../../../shared/widgets/aptigen_shell_header.dart';
 import '../../auth/data/auth_service.dart';
 import '../../market/presentation/market_page.dart';
 import '../../modules/presentation/module_launcher_page.dart';
+import '../../notifications/data/module_unread_counts.dart';
 import '../../notifications/data/notifications_service.dart';
 import '../../notifications/presentation/notifications_page.dart';
 import '../../profile/presentation/profile_page.dart';
@@ -65,7 +66,8 @@ class _HomeShellPageState extends State<HomeShellPage> {
     AppSocket.instance?.on('notification:created', _onNotificationCreated);
   }
 
-  void _onNotificationCreated(dynamic _) {
+  void _onNotificationCreated(dynamic payload) {
+    ModuleUnreadCounts.onCreated(payload);
     if (!mounted) return;
     setState(() => _unreadNotifications += 1);
   }
@@ -84,6 +86,7 @@ class _HomeShellPageState extends State<HomeShellPage> {
   Future<void> _openNotifications() async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsPage()));
     _loadUnreadCount();
+    ModuleUnreadCounts.refresh();
   }
 
   @override
@@ -123,7 +126,10 @@ class _HomeShellPageState extends State<HomeShellPage> {
             ),
             child: NavigationBar(
               selectedIndex: _currentIndex,
-              onDestinationSelected: (index) => setState(() => _currentIndex = index),
+              onDestinationSelected: (index) {
+                if (index == 0 && _currentIndex != 0) ModuleUnreadCounts.refresh();
+                setState(() => _currentIndex = index);
+              },
               destinations: const [
                 NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
                 NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),

@@ -452,7 +452,6 @@ class MarketScaffold extends StatelessWidget {
         titleSpacing: 0,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: p.text)),
-          if (subtitle != null) Text(subtitle!, style: TextStyle(fontSize: 11.5, color: p.label)),
         ]),
         actions: actions,
       ),
@@ -509,4 +508,42 @@ Future<T?> showMarketSheet<T>(BuildContext context, {required Widget Function(Bu
       child: builder(ctx),
     ),
   );
+}
+
+/// Light / dark accent pairs cycled through module menu lists so each row's
+/// icon gets its own colour (same set the Sales home uses).
+const kListAccents = <(Color, Color)>[
+  (Color(0xFF0A6ED1), Color(0xFF4DB1FF)), // blue
+  (Color(0xFF188918), Color(0xFF5DC122)), // green
+  (Color(0xFFD20A0A), Color(0xFFFF6A6A)), // red
+  (Color(0xFF0E7490), Color(0xFF38BDF8)), // teal
+  (Color(0xFFE76500), Color(0xFFFF8A3D)), // orange
+  (Color(0xFF7858FF), Color(0xFFA78BFA)), // violet
+  (Color(0xFF4F46E5), Color(0xFF818CF8)), // indigo
+  (Color(0xFFDF1278), Color(0xFFF472B6)), // pink
+  (Color(0xFF0891B2), Color(0xFF22D3EE)), // cyan
+  (Color(0xFFB45309), Color(0xFFFBBF24)), // amber
+  (Color(0xFF4D7C0F), Color(0xFFA3E635)), // olive
+  (Color(0xFF5B738B), Color(0xFFA9B4BE)), // grey
+];
+
+/// Tinted square icon for menu / area list rows; [index] picks the accent.
+class AccentListIcon extends StatelessWidget {
+  final IconData icon;
+  final int index;
+  final double size;
+  const AccentListIcon(this.icon, {super.key, required this.index, this.size = 36});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = MarketPalette.of(context);
+    final (light, dark) = kListAccents[index % kListAccents.length];
+    final fg = p.dark ? dark : light;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: fg.withValues(alpha: p.dark ? 0.18 : 0.12), borderRadius: BorderRadius.circular(9)),
+      child: Icon(icon, size: size * 0.53, color: fg),
+    );
+  }
 }

@@ -16,6 +16,14 @@ class AppColors {
   static const slate400 = Color(0xFF94A3B8);
   static const slate600 = Color(0xFF475569);
   static const slate900 = Color(0xFF0F172A);
+
+  /// App-wide page background — the same tones the Store / Sell screens use
+  /// (MarketPalette.bg), so every module shares one canvas.
+  static const pageLight = Color(0xFFF5F6F7);
+  static const pageDark = Color(0xFF12171C);
+  static const cardLight = Colors.white;
+  static const cardDark = Color(0xFF1D232A);
+  static Color page(BuildContext context) => Theme.of(context).brightness == Brightness.dark ? pageDark : pageLight;
 }
 
 class AppTheme {
@@ -26,8 +34,10 @@ class AppTheme {
     );
     return ThemeData(
       useMaterial3: true,
-      colorScheme: scheme,
-      scaffoldBackgroundColor: AppColors.slate50,
+      colorScheme: scheme.copyWith(surface: AppColors.cardLight),
+      scaffoldBackgroundColor: AppColors.pageLight,
+      canvasColor: AppColors.pageLight,
+      cardColor: AppColors.cardLight,
       textTheme: GoogleFonts.poppinsTextTheme(),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -57,8 +67,10 @@ class AppTheme {
     );
     return ThemeData(
       useMaterial3: true,
-      colorScheme: scheme,
-      scaffoldBackgroundColor: AppColors.slate900,
+      colorScheme: scheme.copyWith(surface: AppColors.cardDark),
+      scaffoldBackgroundColor: AppColors.pageDark,
+      canvasColor: AppColors.pageDark,
+      cardColor: AppColors.cardDark,
       textTheme: GoogleFonts.poppinsTextTheme(ThemeData(brightness: Brightness.dark).textTheme),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
