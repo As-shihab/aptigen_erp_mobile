@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "517088090411",
+    "project_id": "aptigen-4b5b3",
+    "storage_bucket": "aptigen-4b5b3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:517088090411:android:c897d0b51a1fef93030d6e",
+        "android_client_info": {
+          "package_name": "com.example.aptigen_erp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwRFtdyY6otJep3x8yPpNv8cd73pqfX90"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

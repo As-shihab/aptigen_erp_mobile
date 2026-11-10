@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../../core/network/http_client.dart';
+import '../../../../auth/data/auth_service.dart';
 import '../../widgets/sell_ui.dart' show MarketPalette, SectionHeader, showMarketSheet, marketToast;
 import '../../../../settings/data/printer_device.dart';
 import '../../../../settings/data/printer_devices_service.dart';
@@ -84,11 +85,12 @@ class _PosSettingsSheetState extends State<_PosSettingsSheet> {
     if (device?.macAddress == null) return;
     setState(() => _testPrinting = true);
     try {
+      final workplace = (await AuthService(ApiClient()).getStoredUser())?.workplaceName ?? '';
       final bytes = (EscPosBuilder()
             ..initialize()
             ..alignCenter()
             ..boldOn()
-            ..line('Aptigen POS')
+            ..line(workplace)
             ..boldOff()
             ..line('Test print')
             ..line(DateTime.now().toString())

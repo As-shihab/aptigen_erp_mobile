@@ -56,7 +56,7 @@ class _CashFlowPageState extends State<CashFlowPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AptigenAppBar(title: 'Cash Flow', showBack: true),
+      appBar: AptigenAppBar(title: 'Cash flow', showBack: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.brand))
           : _error != null

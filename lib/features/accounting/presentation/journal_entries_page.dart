@@ -100,7 +100,7 @@ class _JournalEntriesPageState extends State<JournalEntriesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AptigenAppBar(title: 'Journal Entries', showBack: true),
+      appBar: AptigenAppBar(title: 'Journal entries', showBack: true),
       floatingActionButton: FloatingActionButton(
         onPressed: _openCreate,
         backgroundColor: AppColors.brand,
@@ -271,7 +271,7 @@ class _JournalEntryFormPageState extends State<_JournalEntryFormPage> {
     try {
       final journalEntryId = await _service.createJournalEntry(
         jeNo: _jeNoCtrl.text.trim(),
-        entryDate: _entryDate?.toIso8601String(),
+        entryDate: (_entryDate ?? DateTime.now()).toIso8601String(),
         remarks: _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
       );
 
@@ -305,7 +305,7 @@ class _JournalEntryFormPageState extends State<_JournalEntryFormPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AptigenAppBar(title: 'New Journal Entry', showBack: true),
+      appBar: AptigenAppBar(title: 'New journal entry', showBack: true),
       body: _loadingAccounts
           ? const Center(child: CircularProgressIndicator(color: AppColors.brand))
           : ListView(
@@ -367,7 +367,7 @@ class _JournalEntryFormPageState extends State<_JournalEntryFormPage> {
             child: ElevatedButton(
               onPressed: _canSave && !_saving ? _save : null,
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.brand, foregroundColor: Colors.white),
-              child: Text(_saving ? 'Posting…' : 'Post Entry'),
+              child: Text(_saving ? 'Posting…' : 'Post entry'),
             ),
           ),
         ),

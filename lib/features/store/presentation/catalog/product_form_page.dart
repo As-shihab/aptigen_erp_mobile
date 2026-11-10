@@ -68,6 +68,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
     _costPriceController.dispose();
     _stockQtyController.dispose();
     _lowStockAtController.dispose();
+    _pageScroll.dispose();
     super.dispose();
   }
 
@@ -144,6 +145,43 @@ class _ProductFormPageState extends State<ProductFormPage> {
     }
   }
 
+  // ── Step wizard ────────────────────────────────────────────────────────
+  // Details → Pricing (classification + prices) → Stock & media → Review.
+  // A name is required to leave step 1 and a valid price to leave step 2;
+  // earlier steps can always be reopened from the step header.
+
+  static const _steps = [
+    (label: 'Details', icon: Icons.edit_note_outlined),
+    (label: 'Pricing', icon: Icons.sell_outlined),
+    (label: 'Stock', icon: Icons.inventory_outlined),
+    (label: 'Review', icon: Icons.fact_check_outlined),
+  ];
+
+  int _step = 0;
+  final _pageScroll = ScrollController();
+
+  String? _stepError(int step) {
+    if (step == 0 && _nameController.text.trim().isEmpty) return 'Please enter a product name.';
+    if (step == 1 && double.tryParse(_priceController.text.trim()) == null) return 'Please enter a valid price.';
+    return null;
+  }
+
+  void _goTo(int step) {
+    FocusScope.of(context).unfocus();
+    if (step > _step) {
+      for (var s = _step; s < step; s++) {
+        final error = _stepError(s);
+        if (error != null) {
+          setState(() => _step = s);
+          marketToast(context, error, error: true);
+          return;
+        }
+      }
+    }
+    setState(() => _step = step);
+    if (_pageScroll.hasClients) _pageScroll.jumpTo(0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = MarketPalette.of(context);
@@ -152,16 +190,8 @@ class _ProductFormPageState extends State<ProductFormPage> {
     const decimal = TextInputType.numberWithOptions(decimal: true);
     final symbol = '${currencySymbol()} ';
 
-    return MarketScaffold(
-      title: _isEdit ? 'Edit product' : 'New product',
-      subtitle: _isEdit ? widget.existing!.name : 'Item you can stock, buy and sell',
-      bottom: _saveBar(p),
-      body: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-          children: [
+    final stepBodies = <List<Widget> Function()>[
+      () => [
             block(const SectionHeader('Details', subtitle: 'Name and codes used on documents and labels')),
             block(_card([
               FieldBlock(
@@ -181,6 +211,8 @@ class _ProductFormPageState extends State<ProductFormPage> {
               ]),
               FieldBlock(label: 'Short description', child: MarketTextField(controller: _shortDescController, hint: 'A line or two about this product', maxLines: 3)),
             ])),
+          ],
+      () => [
             block(const SectionHeader('Classification')),
             block(_card(_lookupsLoading
                 ? const [
@@ -251,6 +283,8 @@ class _ProductFormPageState extends State<ProductFormPage> {
                 child: MarketTextField(controller: _costPriceController, hint: '0.00', keyboardType: decimal, prefixText: symbol),
               ),
             ])),
+          ],
+      () => [
             block(const SectionHeader('Stock')),
             block(_card([
               SwitchRow(
@@ -284,6 +318,10 @@ class _ProductFormPageState extends State<ProductFormPage> {
             ])),
             block(const SectionHeader('Media')),
             block(_card([_mediaBlock(p)])),
+          ],
+      () => [
+            block(const SectionHeader('Review')),
+            block(_reviewCard(p)),
             block(const SectionHeader('Visibility')),
             block(_card([
               SwitchRow(
@@ -300,8 +338,116 @@ class _ProductFormPageState extends State<ProductFormPage> {
               ),
             ])),
           ],
-        ),
+    ];
+
+    return MarketScaffold(
+      title: _isEdit ? 'Edit product' : 'New product',
+      subtitle: _isEdit ? widget.existing!.name : 'Item you can stock, buy and sell',
+      bottom: _saveBar(p),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Column(children: [
+          _stepper(p),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: ListView(
+                key: ValueKey(_step),
+                controller: _pageScroll,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                children: stepBodies[_step](),
+              ),
+            ),
+          ),
+        ]),
       ),
+    );
+  }
+
+  Widget _stepper(MarketPalette p) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      decoration: BoxDecoration(color: p.card, border: Border(bottom: BorderSide(color: p.line))),
+      child: Row(children: [
+        for (var i = 0; i < _steps.length; i++) ...[
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: _submitting ? null : () => _goTo(i),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i < _step ? p.okBg : (i == _step ? p.brand : p.card),
+                    border: Border.all(color: i < _step ? p.ok : (i == _step ? p.brand : p.line), width: 2),
+                  ),
+                  alignment: Alignment.center,
+                  child: i < _step
+                      ? Icon(Icons.check, size: 16, color: p.ok)
+                      : Icon(_steps[i].icon, size: 15, color: i == _step ? Colors.white : p.label),
+                ),
+                const SizedBox(height: 4),
+                Text(_steps[i].label,
+                    style: TextStyle(fontSize: 11, fontWeight: i == _step ? FontWeight.w700 : FontWeight.w500, color: i == _step ? p.brand : p.label)),
+              ]),
+            ),
+          ),
+          if (i < _steps.length - 1)
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.only(left: 4, right: 4, bottom: 18),
+                height: 2,
+                color: i < _step ? p.ok : p.line,
+              ),
+            ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _reviewCard(MarketPalette p) {
+    String nameOf(List<Map<String, dynamic>> rows, int? id) =>
+        id == null ? '—' : (rows.firstWhere((r) => (r['id'] as num?)?.toInt() == id, orElse: () => const <String, dynamic>{})['name'] ?? '—').toString();
+    String orDash(String v) => v.trim().isEmpty ? '—' : v.trim();
+    final symbol = '${currencySymbol()} ';
+    final rows = <(String, String, int)>[
+      ('Name', orDash(_nameController.text), 0),
+      ('SKU', orDash(_skuController.text), 0),
+      ('Barcode', orDash(_barcodeController.text), 0),
+      ('Category', nameOf(_categories, _categoryId), 1),
+      ('Sub-category', nameOf(_subCategories, _subCategoryId), 1),
+      ('Unit', nameOf(_uoms, _uomId), 1),
+      ('Price', _priceController.text.trim().isEmpty ? '—' : '$symbol${_priceController.text.trim()}', 1),
+      ('Cost price', _costPriceController.text.trim().isEmpty ? '—' : '$symbol${_costPriceController.text.trim()}', 1),
+      ('Stock', _trackStock ? '${orDash(_stockQtyController.text)} (low at ${orDash(_lowStockAtController.text)})' : 'Not tracked', 2),
+      ('Thumbnail', _thumbnailUrl != null ? 'Selected' : 'None', 2),
+    ];
+    return MarketCard(
+      padding: EdgeInsets.zero,
+      child: Column(children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) Divider(height: 1, color: p.line),
+          InkWell(
+            onTap: () => _goTo(rows[i].$3),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              child: Row(children: [
+                SizedBox(width: 104, child: Text(rows[i].$1, style: TextStyle(fontSize: 12.5, color: p.label))),
+                Expanded(
+                  child: Text(rows[i].$2,
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: p.text)),
+                ),
+                Icon(Icons.chevron_right, size: 18, color: p.label),
+              ]),
+            ),
+          ),
+        ],
+      ]),
     );
   }
 
@@ -379,25 +525,45 @@ class _ProductFormPageState extends State<ProductFormPage> {
     );
   }
 
-  Widget _saveBar(MarketPalette p) => Container(
-        decoration: BoxDecoration(color: p.card, border: Border(top: BorderSide(color: p.line))),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            child: SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                onPressed: _submitting ? null : _submit,
-                icon: _submitting
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Icon(_isEdit ? Icons.check : Icons.add, size: 20),
-                label: Text(_isEdit ? 'Save changes' : 'Create product'),
+  Widget _saveBar(MarketPalette p) {
+    final last = _step == _steps.length - 1;
+    return Container(
+      decoration: BoxDecoration(color: p.card, border: Border(top: BorderSide(color: p.line))),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(children: [
+            if (_step > 0) ...[
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                    onPressed: _submitting ? null : () => _goTo(_step - 1),
+                    child: const Text('Back'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              flex: 2,
+              child: SizedBox(
+                height: 48,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  onPressed: _submitting ? null : (last ? _submit : () => _goTo(_step + 1)),
+                  icon: _submitting
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Icon(last ? (_isEdit ? Icons.check : Icons.add) : Icons.arrow_forward, size: 20),
+                  label: Text(last ? (_isEdit ? 'Save changes' : 'Create product') : 'Next'),
+                ),
               ),
             ),
-          ),
+          ]),
         ),
-      );
+      ),
+    );
+  }
 }

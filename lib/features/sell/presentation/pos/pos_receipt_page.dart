@@ -19,7 +19,7 @@ Future<String?> printSaleReceiptToBluetooth(SalesOrder sale, {String? receiptFoo
     var name = workplaceName;
     if (name == null || name.trim().isEmpty) {
       final user = await AuthService(ApiClient()).getStoredUser();
-      name = (user?.companyName.trim().isNotEmpty ?? false) ? user!.companyName.trim() : 'Aptigen POS';
+      name = (user?.workplaceName.trim().isNotEmpty ?? false) ? user!.workplaceName.trim() : '';
     }
     final device = await PrinterDevicesService().getDefault();
     if (device?.macAddress == null) return 'No printer configured. Add one in Settings > Printers.';
@@ -49,7 +49,7 @@ class PosReceiptPage extends StatefulWidget {
 }
 
 class _PosReceiptPageState extends State<PosReceiptPage> {
-  String _workplaceName = 'Aptigen POS';
+  String _workplaceName = '';
   bool _thermalPrinting = false;
 
   @override
@@ -62,7 +62,7 @@ class _PosReceiptPageState extends State<PosReceiptPage> {
   Future<void> _loadWorkplaceName() async {
     final user = await AuthService(ApiClient()).getStoredUser();
     if (!mounted || user == null) return;
-    final name = user.companyName.trim();
+    final name = user.workplaceName.trim();
     if (name.isNotEmpty) setState(() => _workplaceName = name);
   }
 

@@ -23,8 +23,34 @@ class MarketService {
       final q = _escapeOData(search.trim().toLowerCase());
       filters.add("(contains(tolower(name),'$q') or contains(tolower(category),'$q'))");
     }
-    final res = await _client.get('modules?\$filter=${filters.join(' and ')}&\$top=200');
-    return unwrapList(res).cast<Map<String, dynamic>>().map(MarketApp.fromJson).toList();
+    final results = await Future.wait<Object?>([
+      _client.get('modules?\$filter=${filters.join(' and ')}&\$top=200'),
+      // Price / subscription / welcome-offer state, computed server-side —
+      // the same call desktop's Market.tsx makes. Optional: a failure just
+      // leaves the raw modules.price / is_paid from the OData row.
+      _client.get('market/catalog', isV8: false).then<Object?>((v) => v).catchError((_) => null),
+    ]);
+    final apps = unwrapList(results[0]).cast<Map<String, dynamic>>().map(MarketApp.fromJson).toList();
+    final catalog = results[1];
+    final rows = catalog is Map && catalog['modules'] is List ? (catalog['modules'] as List) : const [];
+    final byId = {for (final r in rows.whereType<Map>()) toNum(r['id']): Map<String, dynamic>.from(r)};
+    for (final app in apps) {
+      final row = byId[app.id];
+      if (row != null) app.applyCatalog(row);
+    }
+    return apps;
+  }
+
+  /// First paid module ever — granted server-side at the welcome discount,
+  /// no admin approval (desktop: POST market/:id/welcome-offer).
+  Future<void> claimWelcomeOffer(int moduleId) async {
+    await _client.post('market/$moduleId/welcome-offer', {}, isV8: false);
+  }
+
+  /// Active payment accounts for one method ('bank' | 'mobile').
+  Future<List<Map<String, dynamic>>> loadPaymentAccounts(String method) async {
+    final res = await _client.get("payment_accounts?\$filter=is_active eq true and method_type eq '${_escapeOData(method)}'&\$orderby=sort_order asc&\$top=200");
+    return unwrapList(res).whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList();
   }
 
   Future<List<String>> loadCategories() async {

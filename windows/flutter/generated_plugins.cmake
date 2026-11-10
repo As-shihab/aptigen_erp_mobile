@@ -3,16 +3,21 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  desktop_webview_window
   file_selector_windows
+  firebase_core
   flutter_tts
   geolocator_windows
   permission_handler_windows
   print_bluetooth_thermal
   printing
   speech_to_text_windows
+  url_launcher_windows
+  window_to_front
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  flutter_local_notifications_windows
   jni
 )
 

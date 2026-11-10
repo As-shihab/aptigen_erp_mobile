@@ -9,6 +9,7 @@ import '../../../../../core/utils/currency.dart';
 import '../../data/market_seller_service.dart';
 import '../widgets/market_ui.dart';
 import 'listing_common.dart';
+import 'listing_options.dart';
 
 /// Full-screen listing wizard — mobile port of erp/desktop's
 /// forms/market/CreateListing.tsx. Pops with the saved status
@@ -44,6 +45,7 @@ const _steps = [
   (label: 'Details', hint: 'Title, category and condition'),
   (label: 'Pricing & stock', hint: 'Price, quantity and order limits'),
   (label: 'Media', hint: 'Photos and videos'),
+  (label: 'Options', hint: 'Colors, sizes and stock per option'),
   (label: 'Review & publish', hint: 'Location and go live'),
 ];
 
@@ -75,6 +77,7 @@ class _ListingFormPageState extends State<ListingFormPage> {
   final List<_MediaItem> _media = [];
   String? _coverUrl;
   int _mediaSeq = 0;
+  ListingOptions _options = ListingOptions();
 
   final _productQuery = TextEditingController();
   final _title = TextEditingController();
@@ -102,6 +105,7 @@ class _ListingFormPageState extends State<ListingFormPage> {
     for (final c in [_productQuery, _title, _description, _price, _compare, _qty, _minOrder, _maxOrder, _city, _country, _tagInput]) {
       c.dispose();
     }
+    _options.dispose();
     super.dispose();
   }
 
@@ -138,6 +142,9 @@ class _ListingFormPageState extends State<ListingFormPage> {
       if (url.isEmpty) continue;
       _media.add(_MediaItem(key: 'm${_mediaSeq++}', url: url, type: isVideoMedia(m) ? 'video' : 'image', name: '${m['name'] ?? ''}'));
     }
+    // `variants` is only present when the listing was loaded with it expanded;
+    // otherwise the option set is unknown and must not be overwritten.
+    _options = ListingOptions.fromApi(l['variants']);
     final thumb = '${l['thumbnail_url'] ?? ''}';
     _coverUrl = thumb.isNotEmpty && _media.any((m) => m.url == thumb && m.type == 'image') ? thumb : null;
   }
@@ -251,7 +258,7 @@ class _ListingFormPageState extends State<ListingFormPage> {
           }
         }
         final q = int.tryParse(_qty.text.trim());
-        if (q == null || q < 0) e['qty'] = 'Enter a whole number';
+        if (!_options.enabled && (q == null || q < 0)) e['qty'] = 'Enter a whole number';
         final mn = int.tryParse(_minOrder.text.trim());
         if (mn == null || mn < 1) e['min'] = 'At least 1';
         final mxText = _maxOrder.text.trim();
@@ -267,6 +274,12 @@ class _ListingFormPageState extends State<ListingFormPage> {
         if (_media.any((m) => m.uploading)) e['media'] = 'Wait for uploads to finish';
         if (_media.any((m) => m.url == null && !m.uploading)) e['media'] = 'Remove or retry the failed uploads';
       case 4:
+        if (_options.enabled && _options.rows.isEmpty) {
+          e['options'] = 'Add at least one color or size, or turn options off';
+        } else if (_options.enabled && _options.hasBadPrice) {
+          e['options'] = 'Check the option prices';
+        }
+      case 5:
         if (_city.text.trim().isEmpty) e['city'] = 'City is required';
         if (_country.text.trim().isEmpty) e['country'] = 'Country is required';
     }
@@ -276,7 +289,8 @@ class _ListingFormPageState extends State<ListingFormPage> {
         1: ['title'],
         2: ['price', 'compare', 'qty', 'min', 'max'],
         3: ['media'],
-        4: ['city', 'country'],
+        4: ['options'],
+        5: ['city', 'country'],
       };
       for (final k in keys[step]!) {
         _errors.remove(k);
@@ -431,7 +445,7 @@ class _ListingFormPageState extends State<ListingFormPage> {
       'tax_rate': l?['tax_rate'] == null ? 6 : toDouble(l!['tax_rate']),
       'condition': _condition,
       'listing_type': _listingType,
-      'quantity': int.tryParse(_qty.text.trim()) ?? 0,
+      'quantity': _options.enabled ? _options.totalStock : int.tryParse(_qty.text.trim()) ?? 0,
       'min_order': int.tryParse(_minOrder.text.trim()) ?? 1,
       'max_order': _maxOrder.text.trim().isEmpty ? null : int.tryParse(_maxOrder.text.trim()),
       // Cover must be a photo — product cards can't show a video.
@@ -446,6 +460,9 @@ class _ListingFormPageState extends State<ListingFormPage> {
         for (var i = 0; i < ready.length; i++)
           {'url': ready[i].url, 'type': ready[i].type, 'name': ready[i].name.isEmpty ? null : ready[i].name, 'position': i},
       ],
+      // Complete option set — only when the form actually knows it, so an
+      // edit whose variants weren't loaded never wipes them.
+      if (!_isEdit || _options.known || _options.enabled) 'variants': _options.payload(_imageUrls),
     };
     setState(() {
       _saving = true;
@@ -561,6 +578,7 @@ class _ListingFormPageState extends State<ListingFormPage> {
         1 => _detailsStep(context),
         2 => _pricingStep(context),
         3 => _mediaStep(context),
+        4 => _optionsStep(context),
         _ => _reviewStep(context),
       };
 
@@ -769,13 +787,30 @@ class _ListingFormPageState extends State<ListingFormPage> {
       const SizedBox(height: 10),
       InfoRow('Currency', '$sym $_currency'),
       const SectionHeader('Stock and order limits'),
-      _label(p, 'Available quantity', required: true),
-      TextField(
-        controller: _qty,
-        keyboardType: TextInputType.number,
-        onChanged: (_) => clear('qty'),
-        decoration: _dec(p, hint: '0', error: _errors['qty']),
-      ),
+      _label(p, 'Available quantity', required: !_options.enabled),
+      if (_options.enabled)
+        MarketCard(
+          onTap: () => _go(4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(children: [
+            Icon(Icons.palette_outlined, size: 18, color: p.label),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${_options.totalStock} units', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: p.text)),
+                Text('Total of your options — set stock per option', style: TextStyle(fontSize: 11.5, color: p.label)),
+              ]),
+            ),
+            Icon(Icons.chevron_right, color: p.label),
+          ]),
+        )
+      else
+        TextField(
+          controller: _qty,
+          keyboardType: TextInputType.number,
+          onChanged: (_) => clear('qty'),
+          decoration: _dec(p, hint: '0', error: _errors['qty']),
+        ),
       const SizedBox(height: 12),
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
@@ -959,7 +994,26 @@ class _ListingFormPageState extends State<ListingFormPage> {
         icon: Icon(icon, color: onTap == null ? p.line : (color ?? p.label)),
       );
 
-  // Step 5 — review & publish
+  List<String> get _imageUrls => [for (final m in _media) if (m.url != null && m.type == 'image') m.url!];
+
+  // Step 5 — options (colors / sizes)
+  Widget _optionsStep(BuildContext context) {
+    final p = MarketPalette.of(context);
+    final price = _price.text.trim();
+    return ListingOptionsStep(
+      options: _options,
+      onChanged: () => setState(() {
+        if (_errors.containsKey('options')) _errors.remove('options');
+      }),
+      priceHint: price.isEmpty ? 'Listing price' : price,
+      currencySymbol: currencySymbol(_currency),
+      imageUrls: _imageUrls,
+      error: _errors['options'],
+      decoration: ({String? hint, String? prefixText, Widget? suffix}) => _dec(p, hint: hint, prefixText: prefixText, suffix: suffix),
+    );
+  }
+
+  // Step 6 — review & publish
   Widget _reviewStep(BuildContext context) {
     final p = MarketPalette.of(context);
     final prod = _product;
@@ -1013,11 +1067,19 @@ class _ListingFormPageState extends State<ListingFormPage> {
           _reviewRow(p, 'Condition', conditionLabels[_condition] ?? _condition, 1),
           _reviewRow(p, 'Listing type', listingTypeLabels[_listingType] ?? _listingType, 1),
           _reviewRow(p, 'Tags', _tags.isEmpty ? '—' : _tags.join(', '), 1),
-          _reviewRow(p, 'Stock', _qty.text.trim().isEmpty ? '0' : _qty.text.trim(), 2),
+          _reviewRow(p, 'Stock', _options.enabled ? '${_options.totalStock}' : (_qty.text.trim().isEmpty ? '0' : _qty.text.trim()), _options.enabled ? 4 : 2),
           _reviewRow(p, 'Order limits', 'Min ${_minOrder.text.trim().isEmpty ? '1' : _minOrder.text.trim()} · max ${_maxOrder.text.trim().isEmpty ? 'no limit' : _maxOrder.text.trim()}', 2),
           _reviewRow(p, 'Featured', _featured ? 'Yes' : 'No', 2),
           _reviewRow(p, 'Expires', _expiresAt == null ? 'Never' : DateFormat('d MMM y, h:mm a').format(_expiresAt!), 2),
           _reviewRow(p, 'Media', '${ready.where((m) => m.type == 'image').length} photos · ${ready.where((m) => m.type == 'video').length} videos', 3),
+          _reviewRow(
+            p,
+            'Options',
+            _options.enabled
+                ? '${_options.rows.length} option${_options.rows.length == 1 ? '' : 's'} · ${_options.totalStock} units'
+                : 'None',
+            4,
+          ),
         ]),
       ),
       const SectionHeader('Location', subtitle: 'Where the item ships from'),

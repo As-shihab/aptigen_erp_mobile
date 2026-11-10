@@ -4,6 +4,22 @@ import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/market_service.dart';
 import '../models/market_app.dart';
+import '../../billing/data/subscription_invoice.dart' show ensureWorkplacePhone;
+import 'purchase_wizard_sheet.dart';
+
+String _takaLabel(double v) => '৳${v == v.roundToDouble() ? v.toInt() : v.toStringAsFixed(2)}';
+
+/// Price badge text — mirrors desktop's `renderPrice` (price.tsx).
+({String text, Color color}) priceLabel(MarketApp app) {
+  if (app.hasActiveSubscription) return (text: 'Subscribed', color: const Color(0xFF0891B2));
+  if (!app.isPaid || app.price <= 0) return (text: 'Free', color: AppColors.success);
+  final offer = app.welcomeOffer;
+  if (offer != null) {
+    final label = offer.percent >= 100 ? (offer.months > 1 ? 'Free ${offer.months} months' : 'Free first month') : '${offer.percent}% off';
+    return (text: label, color: AppColors.success);
+  }
+  return (text: '${_takaLabel(app.price)} / month', color: AppColors.brand);
+}
 
 const _features = [
   'Real-time sync across your workplace',
@@ -102,20 +118,56 @@ class _MarketPageState extends State<MarketPage> {
   /// Market.tsx install progress overlay.
   Future<void> _installWithProgress(MarketApp app) async {
     if (_busyIds.contains(app.id)) return;
+    // Paid installs create a module invoice — the workplace needs a phone first.
+    if (app.isChargeable && !await ensureWorkplacePhone(context, ApiClient())) return;
+    if (!mounted) return;
+
+    // Paid, no welcome offer → Month / Payment / Done wizard (desktop's
+    // PurchaseWizard). It creates the invoice and installs the module itself.
+    if (app.isChargeable && app.welcomeOffer == null) {
+      setState(() => _busyIds.add(app.id));
+      final bought = await showPurchaseWizard(context, app, _service);
+      if (!mounted) return;
+      setState(() {
+        _busyIds.remove(app.id);
+        if (bought) app.installed = true;
+      });
+      if (bought) _load(); // refresh subscription / welcome-offer state
+      return;
+    }
+
     setState(() => _busyIds.add(app.id));
+    final useWelcomeOffer = app.isChargeable && app.welcomeOffer != null;
     final succeeded = await showModalBottomSheet<bool>(
       context: context,
       isDismissible: false,
       enableDrag: false,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
-      builder: (sheetContext) => _InstallProgressSheet(app: app, performInstall: () => _service.install(app.id)),
+      builder: (sheetContext) => _InstallProgressSheet(
+        app: app,
+        performInstall: () async {
+          // First paid module ever: granted server-side at the welcome
+          // discount, no admin approval — then the normal install.
+          if (useWelcomeOffer) await _service.claimWelcomeOffer(app.id);
+          await _service.install(app.id);
+        },
+      ),
     );
     if (!mounted) return;
     setState(() {
       _busyIds.remove(app.id);
       if (succeeded == true) app.installed = true;
     });
+    if (succeeded == true && useWelcomeOffer) {
+      final offer = app.welcomeOffer!;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(offer.percent >= 100
+            ? 'Welcome offer applied — ${app.name} is free for ${offer.months} month${offer.months > 1 ? 's' : ''}'
+            : 'Welcome offer applied — ${offer.percent}% off'),
+      ));
+      _load();
+    }
     if (succeeded == false) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not install ${app.name}.')));
     }
@@ -211,7 +263,7 @@ class _MarketPageState extends State<MarketPage> {
     if (_loading) {
       return GridView.builder(
         padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: 0.92),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: 0.84),
         itemCount: 6,
         itemBuilder: (_, _) => Container(decoration: BoxDecoration(color: AppColors.slate100, borderRadius: BorderRadius.circular(18))),
       );
@@ -236,7 +288,7 @@ class _MarketPageState extends State<MarketPage> {
 
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: 0.92),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: 0.84),
       itemCount: apps.length,
       itemBuilder: (context, index) => _MarketAppCard(
         app: apps[index],
@@ -316,6 +368,11 @@ class _MarketAppCard extends StatelessWidget {
             Text(app.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             const SizedBox(height: 2),
             Text(app.category, style: TextStyle(fontSize: 11, color: AppColors.slate600)),
+            const SizedBox(height: 4),
+            Builder(builder: (_) {
+              final price = priceLabel(app);
+              return Text(price.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: price.color));
+            }),
             const Spacer(),
             SizedBox(
               width: double.infinity,
@@ -331,7 +388,7 @@ class _MarketAppCard extends StatelessWidget {
                 ),
                 child: busy
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text(app.installed ? 'Uninstall' : 'Install', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    : Text(app.installed ? 'Uninstall' : (app.isChargeable && app.welcomeOffer == null ? 'Subscribe' : 'Install'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
               ),
             ),
           ],
@@ -402,6 +459,11 @@ class _AppDetailsSheetState extends State<_AppDetailsSheet> {
                   children: [
                     Text(app.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                     Text(app.category, style: TextStyle(color: AppColors.slate600, fontSize: 12)),
+                    const SizedBox(height: 2),
+                    Builder(builder: (_) {
+                      final price = priceLabel(app);
+                      return Text(price.text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: price.color));
+                    }),
                   ],
                 ),
               ),
@@ -439,7 +501,7 @@ class _AppDetailsSheetState extends State<_AppDetailsSheet> {
               ),
               child: busy
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text(app.installed ? 'Uninstall' : 'Install', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  : Text(app.installed ? 'Uninstall' : (app.isChargeable && app.welcomeOffer == null ? 'Subscribe' : 'Install'), style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
         ],

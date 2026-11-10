@@ -197,7 +197,30 @@ class StatusPill extends StatelessWidget {
   }
 }
 
-/// KPI tile: icon, count-up value, label and optional sub line.
+/// Short form for a small tile: 7000 → 7k, 2450 → 2.4k, 3200000 → 3.2M.
+/// Anything the tile's own format adds around the number (currency symbol,
+/// unit, "%") is kept, so ৳7,000.00 becomes ৳7k.
+String compactTileValue(num v, String Function(num v) format) {
+  final full = format(v);
+  final abs = v.abs();
+  if (abs < 1000) return full;
+  final first = full.indexOf(RegExp(r'\d'));
+  final last = full.lastIndexOf(RegExp(r'\d'));
+  if (first < 0) return full;
+  var prefix = full.substring(0, first);
+  final suffix = full.substring(last + 1);
+  if (v < 0 && !prefix.contains('-')) prefix = '-$prefix';
+  const units = [(1e12, 'T'), (1e9, 'B'), (1e6, 'M'), (1e3, 'k')];
+  final (size, unit) = units.firstWhere((u) => abs >= u.$1);
+  final scaled = abs / size;
+  // One decimal below 100 (2.4k, 12.5k), none above (240k); no trailing .0.
+  var text = scaled >= 100 ? scaled.floor().toString() : ((scaled * 10).floor() / 10).toString();
+  if (text.endsWith('.0')) text = text.substring(0, text.length - 2);
+  return '$prefix$text$unit$suffix';
+}
+
+/// KPI tile: icon, count-up value, label and optional sub line. Large values
+/// are shortened (compactTileValue) so they fit instead of ending in "…".
 class KpiTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -227,7 +250,7 @@ class KpiTile extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
             CountUp(
               value: value,
-              format: format ?? (v) => v.round().toString(),
+              format: (v) => compactTileValue(v, format ?? (v) => v.round().toString()),
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: p.text, height: 1.1),
             ),
             const SizedBox(height: 2),

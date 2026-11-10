@@ -165,6 +165,10 @@ class _RefundCard extends StatelessWidget {
           const SizedBox(width: 8),
           StatusPill(refundStatusLabel[status] ?? status, tone: refundStatusTone(status)),
         ]),
+        if (str(item['variant_label']) != null) ...[
+          const SizedBox(height: 2),
+          Text(str(item['variant_label'])!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: p.label)),
+        ],
         const SizedBox(height: 4),
         Text('Order ${str(order['order_no']) ?? '#${refund['order_id']}'} · ${fmtDate(refund['created_at'])}',
             maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: p.label)),

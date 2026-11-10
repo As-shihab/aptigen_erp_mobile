@@ -4,6 +4,8 @@ import '../../../core/storage/app_storage.dart';
 import '../../../core/utils/currency.dart';
 import '../models/user_model.dart';
 import '../models/workplace_model.dart';
+import '../../notifications/data/push_notifications.dart';
+import 'google_auth.dart';
 
 int _toPositiveInt(dynamic value) {
   final parsed = int.tryParse(value?.toString() ?? '');
@@ -23,6 +25,20 @@ class AuthService {
       {'email': email.trim(), 'password': password},
       isV8: false,
     );
+    return _storeLoginResponse(data);
+  }
+
+  /// Google sign-in: native google_sign_in SDK → ID token → backend
+  /// `POST /api/auth/google/mobile`, which verifies it and returns the same
+  /// `{access_token, refresh_token, user}` shape as `auth/login` (creating
+  /// the account on first use). Returns null if the user cancelled.
+  Future<Map<String, dynamic>?> loginWithGoogle() async {
+    final data = await GoogleAuth.signIn(_client);
+    if (data == null) return null;
+    return _storeLoginResponse(data);
+  }
+
+  Future<Map<String, dynamic>> _storeLoginResponse(dynamic data) async {
     final token = (data?['access_token'] ?? '').toString().trim();
     if (token.isEmpty) throw ApiException(0, 'Login failed. Invalid server response.');
 
@@ -145,6 +161,7 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    await PushNotifications.unregister();
     await AppStorage.clearSession();
   }
 }

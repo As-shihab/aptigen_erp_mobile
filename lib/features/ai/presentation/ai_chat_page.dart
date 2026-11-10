@@ -7,6 +7,7 @@ import '../data/ai_local_prefs.dart';
 import '../data/ai_models.dart';
 import '../data/ai_service.dart';
 import '../data/ai_voice_service.dart';
+import 'widgets/ai_markdown.dart';
 import 'widgets/ai_sessions_sheet.dart';
 
 /// Aptigen AI — same backend/behavior as desktop's `HeaderAiPopover.tsx`
@@ -131,7 +132,7 @@ class _AiChatPageState extends State<AiChatPage> {
         }
       });
       await AiLocalPrefs.setLastSessionId(_sessionId);
-      unawaited(_voiceService.speak(result.fullText));
+      unawaited(_voiceService.speak(stripAiMarkdown(result.fullText)));
     } catch (error) {
       if (!mounted) return;
       final detail = error.toString();
@@ -324,7 +325,7 @@ class _MessageBubble extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (message.text.isNotEmpty)
-                  Text(message.text, style: const TextStyle(fontSize: 13.5, height: 1.45)),
+                  AiMarkdown(message.text, style: DefaultTextStyle.of(context).style.copyWith(fontSize: 13.5, height: 1.45)),
                 if (message.rows.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   _AiResultTable(rows: message.rows),

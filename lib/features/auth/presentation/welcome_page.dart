@@ -6,6 +6,7 @@ import '../models/workplace_model.dart';
 import 'auth_meta.dart';
 import 'device_pending_page.dart';
 import 'widgets/email_step.dart';
+import 'widgets/oauth_buttons.dart';
 import 'widgets/password_step.dart';
 import 'widgets/select_workplace_step.dart';
 import 'widgets/workplace_step.dart';
@@ -15,7 +16,7 @@ enum AuthMode { signin, signup }
 int _maxStepForMode(AuthMode mode) => mode == AuthMode.signup ? 2 : 4;
 
 /// Ported from erp/desktop's WelcomeScreen.tsx auth state machine
-/// (email/password only — OAuth is out of scope for v1).
+/// (email/password + Google; Apple is shown disabled like desktop).
 class WelcomePage extends StatefulWidget {
   const WelcomePage({super.key});
 
@@ -38,6 +39,7 @@ class _WelcomePageState extends State<WelcomePage> {
   int? _signInUserId;
 
   bool _isSubmitting = false;
+  bool _googleLoading = false;
   String? _loginError;
 
   void _resetForm() {
@@ -110,6 +112,40 @@ class _WelcomePageState extends State<WelcomePage> {
       _goToStep(AuthMode.signin, 2);
     } finally {
       setState(() => _isSubmitting = false);
+    }
+  }
+
+  /// Mirrors desktop's handleGoogleOAuth + handleOAuthSuccess: after the
+  /// token exchange, load workplaces and land on select (3) or create (4)
+  /// workplace in sign-in mode — from either sign-in or sign-up.
+  Future<void> _handleGoogleSignIn() async {
+    setState(() {
+      _loginError = null;
+      _googleLoading = true;
+    });
+    try {
+      final user = await _authService.loginWithGoogle();
+      if (user == null) return; // cancelled
+      final userId = int.tryParse(user['id'].toString()) ?? 0;
+      _signInUserId = userId;
+
+      List<WorkplaceOption> workplaces = [];
+      try {
+        workplaces = await _authService.fetchWorkplaces(userId);
+      } catch (_) {
+        // proceed to create
+      }
+      if (!mounted) return;
+      setState(() {
+        _signInWorkplaces = workplaces;
+        _selectedWorkplaceId = workplaces.isNotEmpty ? workplaces.first.id : '';
+        _workplaceName = '';
+      });
+      _goToStep(AuthMode.signin, workplaces.isNotEmpty ? 3 : 4);
+    } catch (error) {
+      if (mounted) setState(() => _loginError = _errorMessage(error, 'Google sign-in failed. Please try again.'));
+    } finally {
+      if (mounted) setState(() => _googleLoading = false);
     }
   }
 
@@ -348,6 +384,14 @@ class _WelcomePageState extends State<WelcomePage> {
                       ),
                     ],
                   ),
+                  if (_step == 0) ...[
+                    const SizedBox(height: 20),
+                    OAuthButtons(
+                      googleLoading: _googleLoading,
+                      disabled: _googleLoading || _isSubmitting,
+                      onGoogle: _handleGoogleSignIn,
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   TextButton(
                     onPressed: () {

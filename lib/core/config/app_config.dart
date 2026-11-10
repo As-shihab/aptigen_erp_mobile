@@ -17,4 +17,7 @@ class AppConfig {
 
   /// Plain REST base — auth/*, hrm/*, and other custom routes.
   static const String apiPrefix = '$apiBase/api/';
+
+  // Google sign-in uses the server's own Google flow in a browser tab
+  // (see features/auth/data/google_auth.dart) — no client ids in the app.
 }

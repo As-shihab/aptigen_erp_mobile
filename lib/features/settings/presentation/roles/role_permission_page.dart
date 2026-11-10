@@ -26,7 +26,7 @@ class _RolePermissionPageState extends State<RolePermissionPage> {
   bool _saving = false;
   int _req = 0;
   String _q = '';
-  final Set<String> _collapsed = {};
+  final Set<String> _expanded = {};
 
   JsonRow? get _role => _roles.where((r) => positiveInt(r['id']) == _roleId).firstOrNull;
   bool get _isOwner => isOwnerRole(_role?['name']);
@@ -278,7 +278,7 @@ class _RolePermissionPageState extends State<RolePermissionPage> {
                   builder: (_, i) {
                     final e = visible[i];
                     final granted = _isOwner ? e.perms.length : e.perms.where((x) => _granted.contains(x.id)).length;
-                    final open = _q.isNotEmpty || !_collapsed.contains(e.m.id);
+                    final open = _q.isNotEmpty || _expanded.contains(e.m.id);
                     return _ModuleCard(
                       module: e.m,
                       perms: e.perms,
@@ -286,7 +286,7 @@ class _RolePermissionPageState extends State<RolePermissionPage> {
                       grantedCount: granted,
                       expanded: open,
                       readOnly: _isOwner,
-                      onExpand: () => setState(() => _collapsed.contains(e.m.id) ? _collapsed.remove(e.m.id) : _collapsed.add(e.m.id)),
+                      onExpand: () => setState(() => _expanded.contains(e.m.id) ? _expanded.remove(e.m.id) : _expanded.add(e.m.id)),
                       onToggle: _toggle,
                       onToggleAll: () => _toggleModule(e.perms, granted != e.perms.length),
                     );

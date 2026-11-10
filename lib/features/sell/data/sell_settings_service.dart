@@ -16,6 +16,9 @@ class SellFeatureToggles {
   final bool hasDiscounts;
   final bool hasSaleApproval;
 
+  /// Staff may create store products from Sales (hub "Product" shortcut).
+  final bool hasProductCreate;
+
   const SellFeatureToggles({
     this.id,
     this.hasPos = true,
@@ -23,6 +26,7 @@ class SellFeatureToggles {
     this.hasQuotation = true,
     this.hasDiscounts = true,
     this.hasSaleApproval = false,
+    this.hasProductCreate = true,
   });
 
   factory SellFeatureToggles.fromJson(Map json) => SellFeatureToggles(
@@ -32,15 +36,17 @@ class SellFeatureToggles {
         hasQuotation: toBool(json['has_quotation'], fallback: true),
         hasDiscounts: toBool(json['has_discounts'], fallback: true),
         hasSaleApproval: toBool(json['has_sale_approval']),
+        hasProductCreate: toBool(json['has_product_create'], fallback: true),
       );
 
-  SellFeatureToggles copyWith({bool? hasPos, bool? hasReturns, bool? hasQuotation, bool? hasDiscounts, bool? hasSaleApproval}) => SellFeatureToggles(
+  SellFeatureToggles copyWith({bool? hasPos, bool? hasReturns, bool? hasQuotation, bool? hasDiscounts, bool? hasSaleApproval, bool? hasProductCreate}) => SellFeatureToggles(
         id: id,
         hasPos: hasPos ?? this.hasPos,
         hasReturns: hasReturns ?? this.hasReturns,
         hasQuotation: hasQuotation ?? this.hasQuotation,
         hasDiscounts: hasDiscounts ?? this.hasDiscounts,
         hasSaleApproval: hasSaleApproval ?? this.hasSaleApproval,
+        hasProductCreate: hasProductCreate ?? this.hasProductCreate,
       );
 }
 
@@ -62,6 +68,7 @@ class SellSettingsService {
       'has_quotation': toggles.hasQuotation,
       'has_discounts': toggles.hasDiscounts,
       'has_sale_approval': toggles.hasSaleApproval,
+      'has_product_create': toggles.hasProductCreate,
     };
     if (toggles.id != null) {
       await _client.put('sell_settings', toggles.id!, payload);

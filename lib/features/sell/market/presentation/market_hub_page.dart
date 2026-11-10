@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../data/market_messages_service.dart';
 import '../data/market_seller_service.dart';
 import 'banners_page.dart';
 import 'flash_sales_page.dart';
 import 'gateways_page.dart';
 import 'listings_page.dart';
+import 'messages/messages_page.dart';
 import 'orders_page.dart';
 import 'promotions_page.dart';
 import 'refunds_page.dart';
@@ -40,11 +42,20 @@ class _MarketHubPageState extends State<MarketHubPage> {
   final _api = MarketSellerService();
   _Overview? _data;
   String? _error;
+  // Live unread count for the Messages tile (refetch on open / resume / socket).
+  late final VoidCallback _detachUnread;
 
   @override
   void initState() {
     super.initState();
+    _detachUnread = SellerMessagesUnread.attach();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _detachUnread();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -90,7 +101,10 @@ class _MarketHubPageState extends State<MarketHubPage> {
 
   Future<void> _open(Widget page) async {
     await Navigator.of(context).push(marketRoute(page));
-    if (mounted) _load();
+    if (mounted) {
+      _load();
+      SellerMessagesUnread.refresh();
+    }
   }
 
   @override
@@ -132,7 +146,10 @@ class _MarketHubPageState extends State<MarketHubPage> {
                     ),
                   ],
                   const SectionHeader('Manage'),
-                  _tiles(p, d),
+                  ValueListenableBuilder<int>(
+                    valueListenable: SellerMessagesUnread.count,
+                    builder: (_, unread, _) => _tiles(p, d, unreadMessages: unread),
+                  ),
                 ],
               ),
       ),
@@ -190,10 +207,11 @@ class _MarketHubPageState extends State<MarketHubPage> {
     );
   }
 
-  Widget _tiles(MarketPalette p, _Overview? d) {
+  Widget _tiles(MarketPalette p, _Overview? d, {int unreadMessages = 0}) {
     final items = <({IconData icon, String title, String sub, MarketTone tone, Widget page, int? badge})>[
       (icon: Icons.inventory_2_outlined, title: 'Listings', sub: 'Products on the market', tone: MarketTone.brand, page: const MarketListingsPage(), badge: null),
       (icon: Icons.receipt_long_outlined, title: 'Website orders', sub: 'Accept, pack, deliver', tone: MarketTone.ok, page: const MarketOrdersPage(), badge: d?.pendingOrders),
+      (icon: Icons.chat_bubble_outline, title: 'Messages', sub: 'Chat with buyers', tone: MarketTone.info, page: const MarketMessagesPage(), badge: unreadMessages),
       (icon: Icons.bolt_outlined, title: 'Flash sales', sub: d != null && d.liveSales > 0 ? '${d.liveSales} live now' : 'Time-boxed prices', tone: MarketTone.error, page: const MarketFlashSalesPage(), badge: null),
       (icon: Icons.local_offer_outlined, title: 'Promotions', sub: 'Coupons and discounts', tone: MarketTone.warn, page: const MarketPromotionsPage(), badge: null),
       (icon: Icons.reviews_outlined, title: 'Reviews', sub: 'Ratings and replies', tone: MarketTone.info, page: const MarketReviewsPage(), badge: d?.unreplied),
@@ -230,7 +248,7 @@ class _MarketHubPageState extends State<MarketHubPage> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(color: p.errorBg, borderRadius: BorderRadius.circular(10)),
-                      child: Text('${it.badge}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: p.error)),
+                      child: Text(it.badge! > 99 ? '99+' : '${it.badge}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: p.error)),
                     ),
                 ]),
                 const Spacer(),

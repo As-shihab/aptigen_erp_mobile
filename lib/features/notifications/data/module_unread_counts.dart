@@ -6,8 +6,8 @@ import '../../../core/network/http_client.dart';
 /// launcher tiles. Mirrors erp/desktop's useModuleUnreadCounts.ts:
 ///  - load: GET /api/notifications/unread-by-module → `{"3": 5, "12": 1}`
 ///    (zero-count modules omitted, scoped server-side)
-///  - live: [onCreated] bumps the payload's module on socket
-///    `notification:created` (fed from HomeShellPage's existing listener)
+///  - live: [onCreated] bumps the payload's module on each foreground FCM
+///    push (fed from HomeShellPage's PushNotifications listener)
 ///  - refetch: after mark read / mark all read (NotificationsService calls
 ///    [refresh] on success), home pull-to-refresh, returning to Home.
 class ModuleUnreadCounts {
@@ -36,7 +36,7 @@ class ModuleUnreadCounts {
     }
   }
 
-  /// Socket `notification:created` payload. Buyer (public-site)
+  /// `notification:created`-shaped payload (see PushNotifications). Buyer (public-site)
   /// notifications carry no workplace — never ERP badges.
   static void onCreated(dynamic payload) {
     if (payload is! Map) return;

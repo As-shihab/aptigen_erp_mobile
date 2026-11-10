@@ -33,7 +33,7 @@ class MarketSellerService {
 
   Future<List<Map<String, dynamic>>> listings({String? filter, int top = 200}) async {
     final q = [
-      r'$expand=medias,category($select=id,name),product($select=id,name,stock_qty,track_stock,allow_backorder)',
+      r'$expand=medias,variants,category($select=id,name),product($select=id,name,stock_qty,track_stock,allow_backorder)',
       r'$orderby=id desc',
       '\$top=$top',
       if (filter != null && filter.isNotEmpty) '\$filter=${_enc(filter)}',

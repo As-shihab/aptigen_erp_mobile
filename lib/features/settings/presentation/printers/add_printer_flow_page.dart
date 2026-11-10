@@ -116,7 +116,7 @@ class _AddPrinterFlowPageState extends State<AddPrinterFlowPage> {
             ..initialize()
             ..alignCenter()
             ..boldOn()
-            ..line(_nameController.text.trim().isEmpty ? 'Aptigen POS' : _nameController.text.trim())
+            ..line(_nameController.text.trim())
             ..boldOff()
             ..line('Test print')
             ..line(DateTime.now().toString())

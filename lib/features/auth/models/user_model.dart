@@ -38,6 +38,10 @@ class UserModel {
         selectedWorkplace: workplace,
       );
 
+  /// The active workplace's name, or '' — for receipts, which print the
+  /// workplace (e.g. "Walkbd") and nothing in its place when it's unknown.
+  String get workplaceName => selectedWorkplace?.name.trim() ?? '';
+
   String get companyName => selectedWorkplace?.name.trim().isNotEmpty == true
       ? selectedWorkplace!.name
       : 'my company ltd';

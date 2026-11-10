@@ -82,7 +82,7 @@ class _ChartOfAccountsPageState extends State<ChartOfAccountsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AptigenAppBar(title: 'Chart of Accounts', showBack: true),
+      appBar: AptigenAppBar(title: 'Chart of accounts', showBack: true),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(),
         backgroundColor: AppColors.brand,

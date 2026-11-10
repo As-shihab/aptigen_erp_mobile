@@ -94,7 +94,8 @@ class _SellSettingsPageState extends State<SellSettingsPage> {
       _toggles.hasReturns != _saved.hasReturns ||
       _toggles.hasQuotation != _saved.hasQuotation ||
       _toggles.hasDiscounts != _saved.hasDiscounts ||
-      _toggles.hasSaleApproval != _saved.hasSaleApproval;
+      _toggles.hasSaleApproval != _saved.hasSaleApproval ||
+      _toggles.hasProductCreate != _saved.hasProductCreate;
 
   @override
   Widget build(BuildContext context) {
@@ -140,6 +141,14 @@ class _SellSettingsPageState extends State<SellSettingsPage> {
                         subtitle: 'Let staff apply discounts on sales and at POS checkout.',
                         value: _toggles.hasDiscounts,
                         onChanged: (v) => setState(() => _toggles = _toggles.copyWith(hasDiscounts: v)),
+                      ),
+                      _toggleRow(
+                        p,
+                        icon: Icons.add_box_outlined,
+                        title: 'Create products from Sales',
+                        subtitle: 'Show the Product shortcut on the Sales home so staff can add new products. On by default.',
+                        value: _toggles.hasProductCreate,
+                        onChanged: (v) => setState(() => _toggles = _toggles.copyWith(hasProductCreate: v)),
                       ),
                     ],
                   ),

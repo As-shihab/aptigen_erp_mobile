@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import '../billing/paywall_state.dart';
 import '../config/app_config.dart';
 import '../storage/app_storage.dart';
 
@@ -37,6 +38,11 @@ class BatchRequest {
 /// convention, and the same `{value: [...], "@count": N}` response shape
 /// (the backend's odata.service.ts returns `@count`, not `@odata.count`
 /// despite that being the more common OData convention name).
+///
+/// OData writes (`isV8` POST/PUT/PATCH/DELETE/uploads) go through
+/// [PaywallState.guardMutation] first, like desktop's HttpClient.request():
+/// a write to a paid-but-unpaid module's entity opens the subscription wall
+/// and throws [PaywallException] instead of hitting the network.
 class ApiClient {
   static const Duration _timeout = Duration(seconds: 15);
 
@@ -61,7 +67,7 @@ class ApiClient {
 
   Future<dynamic> _parse(http.Response res, {String? endpoint}) async {
     if (res.statusCode == 401) {
-      if (endpoint != 'auth/login' && onUnauthorized != null) {
+      if (endpoint != 'auth/login' && endpoint != 'auth/google/mobile' && onUnauthorized != null) {
         await onUnauthorized!();
       }
       throw ApiException(401, 'Unauthorized');
@@ -100,6 +106,7 @@ class ApiClient {
   /// [timeout] overrides the default 15s for slow server work (e.g. the
   /// media image studio's preview / save, which run image processing).
   Future<dynamic> post(String endpoint, Map<String, dynamic> body, {bool isV8 = false, Duration? timeout}) async {
+    if (isV8) PaywallState.guardMutation(endpoint);
     final res = await http
         .post(_uri(endpoint, isV8), headers: await _headers(), body: jsonEncode(body))
         .timeout(timeout ?? _timeout);
@@ -107,6 +114,7 @@ class ApiClient {
   }
 
   Future<dynamic> put(String endpoint, Object id, Map<String, dynamic> body, {bool isV8 = true}) async {
+    if (isV8) PaywallState.guardMutation(endpoint);
     final fullEndpoint = isV8 ? '$endpoint($id)' : '$endpoint/$id';
     final res = await http
         .put(_uri(fullEndpoint, isV8), headers: await _headers(), body: jsonEncode(body))
@@ -117,6 +125,7 @@ class ApiClient {
   /// Partial update — `endpoint/id` on custom `/api/` routes (e.g.
   /// `market/seller-refunds/:id`), `endpoint(id)` on OData.
   Future<dynamic> patch(String endpoint, Object id, Map<String, dynamic> body, {bool isV8 = false}) async {
+    if (isV8) PaywallState.guardMutation(endpoint);
     final fullEndpoint = isV8 ? '$endpoint($id)' : '$endpoint/$id';
     final res = await http
         .patch(_uri(fullEndpoint, isV8), headers: await _headers(), body: jsonEncode(body))
@@ -125,6 +134,7 @@ class ApiClient {
   }
 
   Future<dynamic> delete(String endpoint, Object id, {bool isV8 = true}) async {
+    if (isV8) PaywallState.guardMutation(endpoint);
     final fullEndpoint = isV8 ? '$endpoint($id)' : '$endpoint/$id';
     final res = await http
         .delete(_uri(fullEndpoint, isV8), headers: await _headers())
@@ -145,6 +155,7 @@ class ApiClient {
     bool isV8 = false,
     bool useSharp = true,
   }) async {
+    if (isV8) PaywallState.guardMutation(endpoint);
     final uri = _uri(endpoint, isV8);
     final token = await AppStorage.getToken();
     final request = http.MultipartRequest('POST', uri)
@@ -170,7 +181,9 @@ class ApiClient {
     Map<String, String> fields = const {},
     bool isV8 = false,
     Duration timeout = const Duration(seconds: 120),
+    void Function(int sent, int total)? onProgress,
   }) async {
+    if (isV8) PaywallState.guardMutation(endpoint);
     final uri = _uri(endpoint, isV8);
     final token = await AppStorage.getToken();
     final request = http.MultipartRequest('POST', uri)
@@ -178,7 +191,30 @@ class ApiClient {
       ..files.addAll(files);
     if (token != null && token.isNotEmpty) request.headers['authorization'] = token;
 
-    final streamed = await request.send().timeout(timeout);
+    http.BaseRequest outgoing = request;
+    if (onProgress != null) {
+      // Re-stream the encoded body through a counting StreamedRequest so the
+      // caller can show upload progress (e.g. market chat attachments).
+      final total = request.contentLength;
+      final body = request.finalize(); // also sets the multipart content-type
+      final counted = http.StreamedRequest('POST', uri)
+        ..headers.addAll(request.headers)
+        ..contentLength = total;
+      var sent = 0;
+      body.listen(
+        (chunk) {
+          sent += chunk.length;
+          onProgress(sent, total);
+          counted.sink.add(chunk);
+        },
+        onError: counted.sink.addError,
+        onDone: counted.sink.close,
+        cancelOnError: true,
+      );
+      outgoing = counted;
+    }
+
+    final streamed = await outgoing.send().timeout(timeout);
     final res = await http.Response.fromStream(streamed);
     return _parse(res, endpoint: endpoint);
   }

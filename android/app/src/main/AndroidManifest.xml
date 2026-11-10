@@ -15,6 +15,8 @@
     <!-- Only used to cancel discovery before connecting to an
          already-paired printer, never to derive physical location. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+    <!-- Device-tray mirror of in-app notifications (flutter_local_notifications), Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="Aptigen ERP"
         android:name="${applicationName}"
@@ -39,6 +41,19 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!-- Google sign-in (website flow in a secure browser tab) returns
+             here via aptigenerp://oauth-callback — see google_auth.dart. -->
+        <activity
+            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+            android:exported="true"
+            android:taskAffinity="">
+            <intent-filter android:label="flutter_web_auth_2">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="aptigenerp" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

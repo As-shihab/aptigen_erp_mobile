@@ -307,6 +307,10 @@ class _MarketOrderDetailPageState extends State<MarketOrderDetailPage> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(str(it['title']) ?? 'Item', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: p.text)),
+            if (str(it['variant_label']) != null) ...[
+              const SizedBox(height: 1),
+              Text(str(it['variant_label'])!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: p.label)),
+            ],
             const SizedBox(height: 3),
             Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Text('${_m(price)} × $qty', style: TextStyle(fontSize: 12.5, color: p.label)),

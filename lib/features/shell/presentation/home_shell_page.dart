@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/billing/paywall_state.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/network/socket_client.dart';
 import '../../../core/theme/app_theme.dart';
@@ -7,6 +8,7 @@ import '../../../shared/widgets/aptigen_shell_header.dart';
 import '../../auth/data/auth_service.dart';
 import '../../market/presentation/market_page.dart';
 import '../../modules/presentation/module_launcher_page.dart';
+import '../../notifications/data/push_notifications.dart';
 import '../../notifications/data/module_unread_counts.dart';
 import '../../notifications/data/notifications_service.dart';
 import '../../notifications/presentation/notifications_page.dart';
@@ -22,7 +24,7 @@ class HomeShellPage extends StatefulWidget {
   State<HomeShellPage> createState() => _HomeShellPageState();
 }
 
-class _HomeShellPageState extends State<HomeShellPage> {
+class _HomeShellPageState extends State<HomeShellPage> with WidgetsBindingObserver {
   int _currentIndex = 0;
   String _workplaceName = 'Aptigen ERP';
   int _unreadNotifications = 0;
@@ -38,8 +40,13 @@ class _HomeShellPageState extends State<HomeShellPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Paywall snapshot — a fresh shell means login, workplace switch or cold
+    // start (desktop loads it in AppBootstrapContext on auth change).
+    PaywallState.load();
     _loadWorkplaceName();
     _connectRealtime();
+    _connectPush();
     _loadUnreadCount();
     // Belt-and-suspenders alongside _SessionGate's own refresh (app.dart) —
     // cheap to re-check here too, so this shell never renders currency-
@@ -49,8 +56,16 @@ class _HomeShellPageState extends State<HomeShellPage> {
 
   @override
   void dispose() {
-    AppSocket.instance?.off('notification:created', _onNotificationCreated);
+    WidgetsBinding.instance.removeObserver(this);
+    PushNotifications.removeListener(_onNotificationCreated);
     super.dispose();
+  }
+
+  // Back from the background — a subscription may have been approved or
+  // expired meanwhile, and the socket push may have been missed.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) PaywallState.load();
   }
 
   Future<void> _loadWorkplaceName() async {
@@ -63,10 +78,16 @@ class _HomeShellPageState extends State<HomeShellPage> {
     final context = await resolveSocketContext(ApiClient());
     if (context == null) return;
     AppSocket.connect(context);
-    AppSocket.instance?.on('notification:created', _onNotificationCreated);
   }
 
-  void _onNotificationCreated(dynamic payload) {
+  // Notifications arrive as FCM pushes (PushNotifications), not the
+  // `notification:created` socket event — the socket stays for chat etc.
+  Future<void> _connectPush() async {
+    PushNotifications.addListener(_onNotificationCreated);
+    await PushNotifications.init();
+  }
+
+  void _onNotificationCreated(Map<String, dynamic> payload) {
     ModuleUnreadCounts.onCreated(payload);
     if (!mounted) return;
     setState(() => _unreadNotifications += 1);
@@ -84,6 +105,7 @@ class _HomeShellPageState extends State<HomeShellPage> {
   }
 
   Future<void> _openNotifications() async {
+    PushNotifications.clearTray();
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsPage()));
     _loadUnreadCount();
     ModuleUnreadCounts.refresh();

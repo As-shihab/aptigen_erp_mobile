@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../core/billing/paywall_state.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../accounting/presentation/accounting_home_page.dart';
+import '../../billing/presentation/paywall_sheet.dart';
+import '../../sell/market/presentation/widgets/market_ui.dart' show MarketPalette;
 import '../../chat/presentation/chat_hub_page.dart';
 import '../../../shared/ui/motion_kit.dart' show motionRoute;
 import '../../hr/presentation/hr_hub_page.dart';
@@ -10,7 +13,6 @@ import '../../jobs/presentation/jobs_list_page.dart';
 import '../../market/presentation/market_page.dart';
 import '../../note/presentation/note_page.dart';
 import '../../notifications/data/module_unread_counts.dart';
-import '../../profile/presentation/profile_page.dart';
 import '../../sell/presentation/pos/pos_terminal_page.dart';
 import '../../sell/presentation/sales_hub_page.dart';
 import '../../stays/presentation/stays_list_page.dart';
@@ -67,6 +69,20 @@ class _HomeTabState extends State<HomeTab> {
       if (mounted) setState(() => _loading = false);
     }
     await badges;
+  }
+
+  /// Locked (paid but unpaid) modules open the subscription wall first;
+  /// reads are never blocked on desktop, so the wall offers a view-only
+  /// way in, and any write inside still hits the HTTP-level wall.
+  void _onTileTap(LaunchpadModule module) {
+    final block = PaywallState.blockForModuleCode(module.id);
+    if (block == null) {
+      _openModule(module);
+      return;
+    }
+    showPaywallSheet(context, block, onViewOnly: () {
+      if (mounted) _openModule(module);
+    });
   }
 
   void _openModule(LaunchpadModule module) {
@@ -128,17 +144,6 @@ class _HomeTabState extends State<HomeTab> {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountingHomePage()));
       return;
     }
-    if (module.id == 'profile') {
-      // Same account/billing/invoices screen as the bottom-nav Profile tab —
-      // this tile was previously falling through to the generic "coming
-      // soon" snackbar below since it had no explicit case here. ProfilePage
-      // already renders its own full-bleed gradient hero header (with a
-      // built-in back button when pushed as its own route — see
-      // _ProfileHeader below), so it's pushed bare, not wrapped in a second
-      // AppBar like the market case above.
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfilePage()));
-      return;
-    }
     if (!module.isHr) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${module.label} — coming soon')),
@@ -191,15 +196,36 @@ class _HomeTabState extends State<HomeTab> {
       );
     }
 
+    // Rebuilds tiles whenever the paywall snapshot changes (load, resume,
+    // invoice created, billing:invoice-updated socket push).
+    return ValueListenableBuilder<int>(
+      valueListenable: PaywallState.revision,
+      builder: (context, _, _) => _buildGrid(),
+    );
+  }
+
+  Widget _buildGrid() {
     return GridView.builder(
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, mainAxisSpacing: 12, crossAxisSpacing: 12),
       itemCount: _modules.length,
       itemBuilder: (context, index) {
         final module = _modules[index];
+        final block = PaywallState.blockForModuleCode(module.id);
+        final p = MarketPalette.of(context);
+        // Desktop Dashboard's status wording: Expired (critical) / Inactive
+        // (neutral), plus the wall's "awaiting approval" for a pending invoice.
+        final lockLabel = block == null
+            ? null
+            : block.pendingInvoice != null
+                ? 'Pending approval'
+                : block.isExpired
+                    ? 'Expired'
+                    : 'Inactive';
+        final lockColor = block == null ? null : (block.isExpired ? p.error : (block.pendingInvoice != null ? p.warn : p.neutral));
         return InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => _openModule(module),
+          onTap: () => _onTileTap(module),
           child: Container(
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
@@ -218,11 +244,29 @@ class _HomeTabState extends State<HomeTab> {
                     clipBehavior: Clip.none,
                     alignment: Alignment.center,
                     children: [
-                      CircleAvatar(
-                        radius: 22,
-                        backgroundColor: module.color.withValues(alpha: 0.15),
-                        child: Icon(module.icon, color: module.color),
+                      Opacity(
+                        opacity: block == null ? 1 : 0.5,
+                        child: CircleAvatar(
+                          radius: 22,
+                          backgroundColor: module.color.withValues(alpha: 0.15),
+                          child: Icon(module.icon, color: module.color),
+                        ),
                       ),
+                      if (block != null)
+                        Positioned(
+                          bottom: 0,
+                          left: 38,
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: p.card,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: p.line),
+                            ),
+                            child: Icon(Icons.lock, size: 12, color: lockColor),
+                          ),
+                        ),
                       if (module.moduleId > 0)
                         Positioned(
                           top: 0,
@@ -238,11 +282,20 @@ class _HomeTabState extends State<HomeTab> {
                   child: Text(
                     module.label,
                     textAlign: TextAlign.center,
-                    maxLines: 2,
+                    maxLines: lockLabel == null ? 2 : 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
                   ),
                 ),
+                if (lockLabel != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    lockLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: lockColor),
+                  ),
+                ],
               ],
             ),
           ),

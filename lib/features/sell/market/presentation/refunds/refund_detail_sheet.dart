@@ -110,6 +110,10 @@ class _RefundDetailSheetState extends State<_RefundDetailSheet> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(str(item['title']) ?? 'Item',
                       maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: p.text)),
+                  if (str(item['variant_label']) != null) ...[
+                    const SizedBox(height: 1),
+                    Text(str(item['variant_label'])!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: p.label)),
+                  ],
                   const SizedBox(height: 3),
                   Text('${toInt(r['quantity'])} × ${money(toDouble(item['price']))}', style: TextStyle(fontSize: 12.5, color: p.label)),
                 ]),

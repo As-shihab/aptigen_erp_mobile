@@ -97,7 +97,7 @@ class _PaymentVouchersPageState extends State<PaymentVouchersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AptigenAppBar(title: 'Payment Vouchers', showBack: true),
+      appBar: AptigenAppBar(title: 'Payment vouchers', showBack: true),
       floatingActionButton: FloatingActionButton(
         onPressed: _openCreate,
         backgroundColor: AppColors.brand,
@@ -266,7 +266,7 @@ class _PaymentVoucherFormPageState extends State<_PaymentVoucherFormPage> {
 
       final journalEntryId = await _service.createJournalEntry(
         jeNo: _pvNoCtrl.text.trim(),
-        entryDate: _voucherDate?.toIso8601String(),
+        entryDate: (_voucherDate ?? DateTime.now()).toIso8601String(),
         referenceType: 'PAYMENT_VOUCHER',
         remarks: _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
       );
@@ -284,7 +284,7 @@ class _PaymentVoucherFormPageState extends State<_PaymentVoucherFormPage> {
         'party_type': _partyType,
         'party_id': _party?.id,
         'amount': _amount,
-        'voucher_date': _voucherDate?.toIso8601String(),
+        'voucher_date': (_voucherDate ?? DateTime.now()).toIso8601String(),
         'remarks': _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
       });
       if (voucherId > 0) await _service.setJournalEntryReferenceId(journalEntryId, voucherId);
@@ -305,7 +305,7 @@ class _PaymentVoucherFormPageState extends State<_PaymentVoucherFormPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AptigenAppBar(title: 'New Payment Voucher', showBack: true),
+      appBar: AptigenAppBar(title: 'New payment voucher', showBack: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.brand))
           : ListView(

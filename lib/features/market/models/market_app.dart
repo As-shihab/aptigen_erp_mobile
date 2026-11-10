@@ -69,6 +69,18 @@ class MarketApp {
   final bool isFeatured;
   bool installed;
 
+  // Pricing — merged in from GET market/catalog (server-computed, same row
+  // desktop's Market.tsx uses): monthly price, whether the module is paid,
+  // an active subscription (or workplace-wide free access), and the
+  // first-paid-module welcome offer when one applies.
+  double price;
+  bool isPaid;
+  bool hasActiveSubscription;
+  ({int percent, int months})? welcomeOffer;
+
+  /// Needs a purchase before install — mirrors desktop's `isChargeable`.
+  bool get isChargeable => !hasActiveSubscription && isPaid && price > 0;
+
   MarketApp({
     required this.id,
     required this.name,
@@ -82,7 +94,20 @@ class MarketApp {
     required this.isUninstallable,
     required this.isFeatured,
     this.installed = false,
+    this.price = 0,
+    this.isPaid = false,
+    this.hasActiveSubscription = false,
+    this.welcomeOffer,
   });
+
+  /// Copies the pricing fields off a `market/catalog` row.
+  void applyCatalog(Map<String, dynamic> row) {
+    price = double.tryParse('${row['price'] ?? ''}') ?? 0;
+    isPaid = row['isPaid'] != false;
+    hasActiveSubscription = row['hasActiveSubscription'] == true;
+    final offer = row['welcomeOffer'];
+    welcomeOffer = offer is Map ? (percent: toNum(offer['percent']), months: toNum(offer['months']) < 1 ? 1 : toNum(offer['months'])) : null;
+  }
 
   factory MarketApp.fromJson(Map<String, dynamic> json) {
     final category = (json['category'] ?? 'General').toString().trim();
@@ -98,6 +123,8 @@ class MarketApp {
       isInstallable: json['is_installable'] != false,
       isUninstallable: json['is_uninstallable'] != false,
       isFeatured: json['is_featured'] == true,
+      price: double.tryParse('${json['price'] ?? ''}') ?? 0,
+      isPaid: json['is_paid'] != false,
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../billing/paywall_state.dart';
 
 /// Same key names the desktop app uses in localStorage, kept identical so
 /// both clients follow the same convention even though storage isn't shared.
@@ -61,6 +62,7 @@ class AppStorage {
   static Future<void> clearSession() async {
     await clearToken();
     await clearUser();
+    PaywallState.reset();
   }
 
   static Future<void> setThemeMode(String mode) async {

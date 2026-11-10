@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../app/app.dart';
 import '../data/market_seller_service.dart';
 import 'orders/order_common.dart';
 import 'orders/order_detail_page.dart';
@@ -7,8 +8,25 @@ import 'widgets/market_ui.dart';
 /// Website (market) orders that include this store's items — GET
 /// /api/market/seller-orders. Filter by status, search, open an order to
 /// accept / pack / deliver / cancel it.
+/// `/sell/online/market/orders[?order=<id>]` (the link on `market_order_*`
+/// notifications) → `(isOrdersLink, orderId)`.
+({bool isOrders, int? orderId}) marketOrderFromLink(String? link) {
+  if (link == null || !link.contains('/sell/online/market/orders')) return (isOrders: false, orderId: null);
+  final uri = Uri.tryParse(link);
+  return (isOrders: true, orderId: int.tryParse(uri?.queryParameters['order'] ?? ''));
+}
+
+/// Opens website orders from anywhere (push tap, notifications list) via
+/// the root navigator — straight into [orderId] when given, like a message
+/// notification opens its chat.
+void openMarketOrdersFromAnywhere({int? orderId}) {
+  navigatorKey.currentState?.push(marketRoute(MarketOrdersPage(openOrderId: orderId)));
+}
+
 class MarketOrdersPage extends StatefulWidget {
-  const MarketOrdersPage({super.key});
+  /// Order to open as soon as the list has loaded (from a notification).
+  final int? openOrderId;
+  const MarketOrdersPage({super.key, this.openOrderId});
 
   @override
   State<MarketOrdersPage> createState() => _MarketOrdersPageState();
@@ -54,6 +72,7 @@ class _MarketOrdersPageState extends State<MarketOrdersPage> {
         _rows = rows;
         _error = null;
       });
+      _openRequestedOrder();
     } catch (e) {
       if (!mounted) return;
       if (_rows.isEmpty) setState(() => _error = errorText(e, 'Could not load website orders'));
@@ -90,6 +109,23 @@ class _MarketOrdersPageState extends State<MarketOrdersPage> {
         for (final r in _rows) toInt(r['id']) == id ? {...r, 'status': status} : r,
       ];
     });
+  }
+
+  bool _openedRequested = false;
+
+  // From a notification: show that order's detail once (on the first load).
+  void _openRequestedOrder() {
+    final id = widget.openOrderId;
+    if (id == null || _openedRequested) return;
+    _openedRequested = true;
+    final order = _rows.cast<Map<String, dynamic>?>().firstWhere((r) => '${r?['id']}' == '$id', orElse: () => null);
+    if (order == null) {
+      marketToast(context, 'That order is no longer in your list');
+      return;
+    }
+    final status = '${order['status']}';
+    if (_filter != 'all' && _filter != status) setState(() => _filter = status);
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _open(order); });
   }
 
   void _open(Map<String, dynamic> order) {

@@ -45,7 +45,7 @@ class _SalesOrderDetailPageState extends State<SalesOrderDetailPage> {
   bool _voiding = false;
   bool _thermalPrinting = false;
   SalesOrder? _sale;
-  String _workplaceName = 'Aptigen POS';
+  String _workplaceName = '';
   String? _receiptFooter;
 
   @override
@@ -64,7 +64,7 @@ class _SalesOrderDetailPageState extends State<SalesOrderDetailPage> {
     final user = results[0] as UserModel?;
     final settings = results[1] as OrderSettings;
     setState(() {
-      final name = user?.companyName.trim();
+      final name = user?.workplaceName.trim();
       if (name != null && name.isNotEmpty) _workplaceName = name;
       _receiptFooter = settings.receiptFooter;
     });

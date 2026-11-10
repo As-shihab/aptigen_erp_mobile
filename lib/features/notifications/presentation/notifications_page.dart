@@ -3,6 +3,8 @@ import '../../../core/network/http_client.dart';
 import '../../../core/network/socket_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/aptigen_app_bar.dart';
+import '../../sell/market/presentation/messages/chat_page.dart';
+import '../../sell/market/presentation/orders_page.dart';
 import '../../../shared/widgets/async_state_view.dart';
 import '../data/notifications_service.dart';
 import '../models/notification_model.dart';
@@ -88,6 +90,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
+  /// Marks read, then follows links we can open in-app (market chat,
+  /// website orders).
+  void _onTap(AppNotification item) {
+    _markRead(item);
+    final chatId = marketChatIdFromLink(item.link);
+    final order = marketOrderFromLink(item.link);
+    if (chatId != null) {
+      openMarketChatFromAnywhere(chatId);
+    } else if (order.isOrders) {
+      openMarketOrdersFromAnywhere(orderId: order.orderId);
+    }
+  }
+
   Future<void> _markAllRead() async {
     if (!_items.any((row) => !row.isRead)) return;
     setState(() {
@@ -129,7 +144,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) => _NotificationTile(
               item: _items[index],
-              onTap: () => _markRead(_items[index]),
+              onTap: () => _onTap(_items[index]),
             ),
           ),
         ),
